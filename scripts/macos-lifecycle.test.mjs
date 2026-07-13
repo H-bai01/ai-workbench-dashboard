@@ -141,7 +141,8 @@ esac
     const env = {
       HOME: home,
       PATH: `${fakeBin}:${path.dirname(process.execPath)}:/usr/bin:/bin:/usr/sbin:/sbin`,
-      LANG: 'C',
+      LANG: 'en_US.UTF-8',
+      LC_ALL: 'en_US.UTF-8',
       AI_WORKBENCH_TESTING: '1',
       AI_WORKBENCH_TEST_OS: 'Darwin',
       AI_WORKBENCH_TEST_UID: '501',

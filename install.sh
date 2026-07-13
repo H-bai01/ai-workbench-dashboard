@@ -28,4 +28,4 @@ release_id="$(prepare_release "$source_dir")"
 set_release_link "$AI_WORKBENCH_CURRENT_LINK" "releases/$release_id"
 clear_release_link "$AI_WORKBENCH_PREVIOUS_LINK"
 write_launch_agent
-info "已安装版本 $release_id。运行 ./start.sh 启动。"
+info "已安装版本 ${release_id}。运行 ./start.sh 启动。"

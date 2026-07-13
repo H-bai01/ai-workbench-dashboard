@@ -36,7 +36,7 @@ if (restart_dashboard) && wait_for_health; then
 fi
 
 if (( upgrade_ok == 1 )); then
-  info "升级成功：$new_release_id。"
+  info "升级成功：${new_release_id}。"
   exit 0
 fi
 
