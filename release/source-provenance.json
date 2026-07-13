@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "product": {
+    "id": "ai-workbench-dashboard",
+    "nameZh": "AI 工作台总控",
+    "nameEn": "AI Workbench Dashboard",
+    "projectLicenseStatus": "pending_upstream_and_rights_verification",
+    "legalAdvice": false
+  },
+  "evidence": {
+    "openclaw": {
+      "repository": "https://github.com/openclaw/openclaw",
+      "commit": "7570831ee1ac40db183c610cde4c80ef6a769642",
+      "license": {
+        "spdx": "MIT",
+        "path": "LICENSE",
+        "blob": "ebaebf7c416761a32f932ad70ebe5d1d2e214f68",
+        "url": "https://github.com/openclaw/openclaw/blob/7570831ee1ac40db183c610cde4c80ef6a769642/LICENSE"
+      }
+    },
+    "anthropicSkills": {
+      "repository": "https://github.com/anthropics/skills",
+      "commit": "4e6907a33c3c0c9ce7c1836980546aaba78a34b5",
+      "pdfSkill": {
+        "path": "skills/pdf/SKILL.md",
+        "blob": "d3e046a5ae107a6cb23cfb16c219837094ab35d3",
+        "url": "https://github.com/anthropics/skills/blob/4e6907a33c3c0c9ce7c1836980546aaba78a34b5/skills/pdf/SKILL.md"
+      },
+      "pdfLicense": {
+        "path": "skills/pdf/LICENSE.txt",
+        "blob": "c55ab42224874608473643de0a85736b7fec0730",
+        "url": "https://github.com/anthropics/skills/blob/4e6907a33c3c0c9ce7c1836980546aaba78a34b5/skills/pdf/LICENSE.txt",
+        "status": "proprietary_restricted"
+      }
+    }
+  },
+  "translations": [
+    {
+      "path": "skill-translations/diagram-maker.md",
+      "purpose": "Diagram creation skill guidance",
+      "sourceStatus": "openclaw_upstream_content_identified",
+      "sourcePath": "skills/diagram-maker/SKILL.md",
+      "sourceBlob": "006329dece78763d72231f1829de8480983648a4",
+      "sourceUrl": "https://github.com/openclaw/openclaw/blob/7570831ee1ac40db183c610cde4c80ef6a769642/skills/diagram-maker/SKILL.md",
+      "upstreamLicenseScope": "Identified upstream content is covered by OpenClaw MIT",
+      "localRightsStatus": "Chinese translation and local changes require rights confirmation",
+      "publicationDecision": "excluded_from_initial_public_candidate_pending_rights"
+    },
+    {
+      "path": "skill-translations/feishu-doc.md",
+      "purpose": "Feishu document skill guidance",
+      "sourceStatus": "openclaw_upstream_content_identified",
+      "sourcePath": "extensions/feishu/skills/feishu-doc/SKILL.md",
+      "sourceBlob": "d402233cca3086a4a94154b712a1c1d80235cb07",
+      "sourceUrl": "https://github.com/openclaw/openclaw/blob/7570831ee1ac40db183c610cde4c80ef6a769642/extensions/feishu/skills/feishu-doc/SKILL.md",
+      "upstreamLicenseScope": "Identified upstream content is covered by OpenClaw MIT",
+      "localRightsStatus": "Chinese translation and local changes require rights confirmation",
+      "publicationDecision": "excluded_from_initial_public_candidate_pending_rights"
+    },
+    {
+      "path": "skill-translations/feishu-drive.md",
+      "purpose": "Feishu drive skill guidance",
+      "sourceStatus": "openclaw_upstream_content_identified",
+      "sourcePath": "extensions/feishu/skills/feishu-drive/SKILL.md",
+      "sourceBlob": "6b46eec7c8798ef0083348a083d1883d3ed9cf4a",
+      "sourceUrl": "https://github.com/openclaw/openclaw/blob/7570831ee1ac40db183c610cde4c80ef6a769642/extensions/feishu/skills/feishu-drive/SKILL.md",
+      "upstreamLicenseScope": "Identified upstream content is covered by OpenClaw MIT",
+      "localRightsStatus": "Chinese translation and local changes require rights confirmation",
+      "publicationDecision": "excluded_from_initial_public_candidate_pending_rights"
+    },
+    {
+      "path": "skill-translations/feishu-perm.md",
+      "purpose": "Feishu permission skill guidance",
+      "sourceStatus": "openclaw_upstream_content_identified",
+      "sourcePath": "extensions/feishu/skills/feishu-perm/SKILL.md",
+      "sourceBlob": "1ce5db8b86c52d53a2687a630e102e8355cfd101",
+      "sourceUrl": "https://github.com/openclaw/openclaw/blob/7570831ee1ac40db183c610cde4c80ef6a769642/extensions/feishu/skills/feishu-perm/SKILL.md",
+      "upstreamLicenseScope": "Identified upstream content is covered by OpenClaw MIT",
+      "localRightsStatus": "Chinese translation and local changes require rights confirmation",
+      "publicationDecision": "excluded_from_initial_public_candidate_pending_rights"
+    },
+    {
+      "path": "skill-translations/feishu-wiki.md",
+      "purpose": "Feishu wiki skill guidance",
+      "sourceStatus": "openclaw_upstream_content_identified",
+      "sourcePath": "extensions/feishu/skills/feishu-wiki/SKILL.md",
+      "sourceBlob": "ad68d8bffa1ad3c058bec5c1a59b9ad885a4b0ba",
+      "sourceUrl": "https://github.com/openclaw/openclaw/blob/7570831ee1ac40db183c610cde4c80ef6a769642/extensions/feishu/skills/feishu-wiki/SKILL.md",
+      "upstreamLicenseScope": "Identified upstream content is covered by OpenClaw MIT",
+      "localRightsStatus": "Chinese translation and local changes require rights confirmation",
+      "publicationDecision": "excluded_from_initial_public_candidate_pending_rights"
+    },
+    {
+      "path": "skill-translations/weather.md",
+      "purpose": "Weather skill guidance",
+      "sourceStatus": "openclaw_upstream_content_identified",
+      "sourcePath": "skills/weather/SKILL.md",
+      "sourceBlob": "e84bbea68bae7416d27eede03154b7acd29b3559",
+      "sourceUrl": "https://github.com/openclaw/openclaw/blob/7570831ee1ac40db183c610cde4c80ef6a769642/skills/weather/SKILL.md",
+      "upstreamLicenseScope": "Identified upstream content is covered by OpenClaw MIT",
+      "localRightsStatus": "Chinese translation and local changes require rights confirmation",
+      "publicationDecision": "excluded_from_initial_public_candidate_pending_rights"
+    },
+    {
+      "path": "skill-translations/lark-voice.md",
+      "purpose": "Lark voice skill guidance",
+      "sourceStatus": "original_source_and_license_unproven",
+      "sourcePath": null,
+      "sourceBlob": null,
+      "sourceUrl": "https://github.com/Lord1Egypt/awesome-skill-forge/blob/master/community/clawhub/l/lark-voice/SKILL.md",
+      "upstreamLicenseScope": "A mirror match does not prove original author authorization",
+      "localRightsStatus": "Unverified",
+      "publicationDecision": "excluded_from_initial_public_candidate_pending_rights"
+    },
+    {
+      "path": "skill-translations/feishu-toolkit.md",
+      "purpose": "Feishu toolkit skill guidance",
+      "sourceStatus": "original_source_and_license_unproven",
+      "sourcePath": null,
+      "sourceBlob": null,
+      "sourceUrl": "https://github.com/dvcrn/openclaw-skills-marketplace/blob/main/plugins/ye4wzp--feishu-toolkit/skills/feishu-toolkit/SKILL.md",
+      "upstreamLicenseScope": "A marketplace mirror match does not prove original author authorization",
+      "localRightsStatus": "Unverified",
+      "publicationDecision": "excluded_from_initial_public_candidate_pending_rights"
+    },
+    {
+      "path": "skill-translations/pdf.md",
+      "purpose": "PDF document skill guidance",
+      "sourceStatus": "anthropic_restricted_source_identified",
+      "sourcePath": "skills/pdf/SKILL.md",
+      "sourceBlob": "d3e046a5ae107a6cb23cfb16c219837094ab35d3",
+      "sourceUrl": "https://github.com/anthropics/skills/blob/4e6907a33c3c0c9ce7c1836980546aaba78a34b5/skills/pdf/SKILL.md",
+      "upstreamLicenseScope": "Proprietary and restricted; copying, derivatives, and distribution are not granted",
+      "localRightsStatus": "Publication blocker",
+      "localLicenseReference": "LICENSE.txt",
+      "localLicenseFilePresent": false,
+      "publicationDecision": "excluded_from_initial_public_candidate_pending_rights"
+    }
+  ]
+}

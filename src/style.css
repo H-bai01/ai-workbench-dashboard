@@ -1,0 +1,485 @@
+/* ============================================================
+   AI 工作台总控 — Apple 磨砂玻璃主题（深色）
+   设计语言：macOS 深空灰 + 半透明玻璃材质 + 苹果系统功能色
+   ============================================================ */
+
+:root {
+  --bg-primary: #111113;                      /* 深空灰页面底 */
+  --bg-secondary: #171719;                    /* 次级背景 */
+  --bg-card: rgba(34, 34, 37, 0.58);          /* 深色白玻璃卡片 */
+  --bg-elevated: rgba(44, 44, 48, 0.82);      /* 浮层（略实保证可读） */
+  --bg-card-hover: rgba(50, 50, 54, 0.66);    /* 卡片悬停 */
+  --text-primary: rgba(245, 245, 247, 0.94);  /* 主文本：苹果式柔白 */
+  --text-secondary: rgba(235, 235, 245, 0.62);/* 次文本 */
+  --text-muted: rgba(235, 235, 245, 0.38);    /* 弱化文本 */
+  --border-color: rgba(235, 235, 245, 0.14);  /* 深色发丝边 */
+  --accent: #0a84ff;                          /* 苹果系统蓝（深色版） */
+  --accent-glow: rgba(10, 132, 255, 0.14);
+  --success: #30d158;                         /* 苹果绿 */
+  --warning: #ff9f0a;                         /* 苹果橙 */
+  --danger: #ff453a;                          /* 苹果红 */
+  --glass-blur: blur(30px) saturate(170%);    /* 磨砂玻璃模糊量 */
+  --fill-subtle: rgba(255, 255, 255, 0.055);  /* 轻填充(按钮/小块底) */
+  --fill-hover: rgba(255, 255, 255, 0.105);   /* 悬停填充 */
+  --bubble-assistant-bg: rgba(58, 58, 60, 0.72);
+  --code-bg: rgba(28, 28, 30, 0.82);
+  --glass-card-bg: var(--bg-card);
+  --glass-card-border: rgba(235, 235, 245, 0.16);
+  --glass-inner-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.085);
+  --glass-shadow: 0 18px 48px rgba(0, 0, 0, 0.22);
+}
+
+/* ============================================================
+   Base — 底色带极淡的色晕，让玻璃卡片透出层次
+   ============================================================ */
+
+body {
+  background-color: var(--bg-primary) !important;
+  background-image: none;
+  color: var(--text-primary) !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Inter', 'Segoe UI', sans-serif !important;
+}
+
+#app {
+  background: transparent !important;
+  color: var(--text-primary) !important;
+}
+
+/* 磨砂玻璃材质：主要容器加背景模糊 */
+.el-card,
+.el-dialog,
+.el-drawer,
+.el-popper.is-dark,
+.el-message,
+.el-notification {
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+
+/* ============================================================
+   Element Plus dark-mode overrides
+   ============================================================ */
+
+/* Card */
+.el-card {
+  --el-card-bg-color: var(--bg-card) !important;
+  --el-card-border-color: var(--border-color) !important;
+  --el-card-border-radius: 12px;
+  background: var(--glass-card-bg) !important;
+  border-color: var(--glass-card-border) !important;
+  box-shadow: var(--glass-inner-highlight), 0 12px 32px rgba(0, 0, 0, 0.14) !important;
+}
+
+.el-card__header {
+  background-color: transparent !important;
+}
+
+/* Input */
+.el-input__wrapper {
+  background-color: var(--bg-elevated) !important;
+  box-shadow: 0 0 0 1px var(--border-color) inset !important;
+}
+
+.el-input__wrapper:hover {
+  box-shadow: 0 0 0 1px var(--accent) inset !important;
+}
+
+.el-input__inner {
+  color: var(--text-primary) !important;
+}
+
+/* Button */
+.el-button--default {
+  --el-button-bg-color: var(--bg-elevated) !important;
+  --el-button-text-color: var(--text-primary) !important;
+  --el-button-border-color: var(--border-color) !important;
+  --el-button-hover-text-color: var(--accent) !important;
+  --el-button-hover-bg-color: var(--bg-elevated) !important;
+  --el-button-hover-border-color: var(--accent) !important;
+}
+
+.el-button--primary {
+  --el-button-bg-color: var(--accent) !important;
+  --el-button-border-color: var(--accent) !important;
+  --el-button-text-color: #ffffff !important;
+}
+
+/* Drawer */
+.el-drawer {
+  background-color: var(--bg-secondary) !important;
+}
+
+.el-drawer__header {
+  color: var(--text-primary) !important;
+}
+
+/* Dialog */
+.el-dialog {
+  background: var(--glass-card-bg) !important;
+  border: 1px solid var(--glass-card-border) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--glass-inner-highlight), 0 28px 70px rgba(0, 0, 0, 0.34) !important;
+}
+
+.el-dialog__header {
+  background-color: transparent !important;
+  border-bottom: 1px solid var(--border-color) !important;
+  padding: 16px 20px !important;
+  margin-right: 0 !important;
+}
+
+.el-dialog__title {
+  color: var(--text-primary) !important;
+}
+
+.el-dialog__body {
+  background-color: transparent !important;
+  padding: 20px !important;
+  color: var(--text-primary) !important;
+}
+
+.el-dialog__close {
+  color: var(--text-primary) !important;
+}
+
+.el-dialog__close:hover {
+  color: var(--accent, #0a84ff) !important;
+}
+
+/* Tag */
+.el-tag {
+  --el-tag-bg-color: var(--accent-glow) !important;
+  --el-tag-border-color: var(--border-color) !important;
+  --el-tag-text-color: var(--accent) !important;
+}
+
+/* Progress */
+.el-progress__text {
+  color: var(--text-primary) !important;
+}
+
+/* Empty */
+.el-empty__description {
+  color: var(--text-secondary) !important;
+}
+
+/* Alert */
+.el-alert {
+  background-color: var(--bg-elevated) !important;
+  border-color: var(--border-color) !important;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bg-elevated);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* ============================================================
+   Animations
+   ============================================================ */
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 5px var(--accent-glow); }
+  50% { box-shadow: 0 0 15px var(--accent-glow); }
+}
+
+/* Status indicator pulse animation */
+.status-indicator {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* Tabular numbers for consistent digit width */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+   Global dark mode overrides
+   ============================================================ */
+
+/* Table */
+.el-table {
+  --el-table-row-hover-bg-color: var(--fill-hover) !important;
+  --el-table-current-row-bg-color: var(--accent-glow) !important;
+  --el-table-bg-color: var(--bg-card) !important;
+  --el-table-tr-bg-color: var(--bg-card) !important;
+  --el-table-header-bg-color: var(--bg-elevated) !important;
+  --el-table-border-color: var(--border-color) !important;
+  --el-table-text-color: var(--text-primary) !important;
+  --el-table-header-text-color: var(--text-secondary) !important;
+}
+
+/* Select */
+.el-select__wrapper {
+  background-color: var(--bg-elevated) !important;
+  box-shadow: 0 0 0 1px var(--border-color) inset !important;
+}
+
+/* Popover */
+.el-popper {
+  background-color: var(--bg-elevated) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Tooltip */
+.el-tooltip__popper {
+  background-color: var(--bg-elevated) !important;
+  color: var(--text-primary) !important;
+}
+
+/* REC-077: Popover/Tooltip 箭头深色主题修复 */
+.el-popper__arrow,
+.el-tooltip__popper .el-popper__arrow {
+  background: none !important;
+}
+
+.el-popper__arrow::before {
+  background-color: var(--border-color) !important;
+  border-color: var(--border-color) !important;
+}
+
+/* Divider */
+.el-divider__text {
+  color: var(--text-secondary) !important;
+}
+
+/* Switch */
+.el-switch__core {
+  background-color: var(--bg-elevated) !important;
+  border-color: var(--border-color) !important;
+}
+
+/* Message / Notification */
+.el-message {
+  background-color: var(--bg-elevated) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
+  z-index: 5000 !important;
+}
+
+.el-message-box {
+  z-index: 5000 !important;
+}
+
+/* 多层弹窗的层级交给 Element 自动递增管理,强行钉死会导致后开的弹窗被压住 */
+
+.el-notification {
+  background-color: var(--bg-elevated) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
+}
+
+/* ============================================================
+   亮色主题（Light Theme）— 在 <html> 添加 .light-theme class 激活
+   ============================================================ */
+
+html.light-theme {
+  /* 背景色系 — 内容面板不透明纯白,层次靠边线和阴影(白玻璃叠灰底会糊) */
+  --bg-primary:    #f5f5f7;                     /* 苹果官网同款暖白 */
+  --bg-secondary:  #ffffff;                     /* 次级背景 */
+  --bg-card:       #ffffff;                     /* 卡片:不透明纯白 */
+  --bg-elevated:   #ffffff;                     /* 浮层:不透明纯白 */
+  --bg-card-hover: #f2f2f4;                     /* 卡片悬停:轻灰 */
+
+  /* 文字色系 — 次级文字加深,拉开对比 */
+  --text-primary:   #1d1d1f;
+  --text-secondary: #48484a;
+  --text-muted:     #8e8e93;
+
+  /* 边框 — 中性发丝线，不带蓝调 */
+  --border-color: rgba(60, 60, 67, 0.12);
+
+  /* 苹果系统功能色（浅色版） */
+  --accent:      #007aff;
+  --accent-glow: rgba(0, 122, 255, 0.08);
+  --success: #34c759;
+  --warning: #ff9500;
+  --danger:  #ff3b30;
+  --fill-subtle: rgba(120, 120, 128, 0.08);
+  --fill-hover: rgba(120, 120, 128, 0.16);
+  --bubble-assistant-bg: rgba(232, 232, 237, 0.82);
+  --code-bg: #f5f5f7;
+  --glass-card-bg: var(--bg-card);
+  --glass-card-border: rgba(60, 60, 67, 0.1);
+  --glass-inner-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.86);
+  --glass-shadow: 0 18px 46px rgba(31, 35, 42, 0.08);
+}
+
+/* 亮色主题：body / #app — 暖白底 + 极淡色晕 */
+html.light-theme body {
+  background-color: var(--bg-primary) !important;
+  background-image: none;
+  color: var(--text-primary) !important;
+}
+html.light-theme #app {
+  background: transparent !important;
+  color: var(--text-primary) !important;
+}
+
+/* 亮色主题：Element Plus 组件覆写 */
+html.light-theme .el-card {
+  --el-card-bg-color:     var(--bg-card)    !important;
+  --el-card-border-color: var(--border-color) !important;
+  background: var(--glass-card-bg) !important;
+  border-color: var(--glass-card-border) !important;
+  box-shadow: var(--glass-inner-highlight), var(--glass-shadow) !important;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+
+html.light-theme .el-input__wrapper {
+  background-color: var(--bg-card) !important;
+  box-shadow: 0 0 0 1px var(--border-color) inset !important;
+}
+
+html.light-theme .el-input__inner {
+  color: var(--text-primary) !important;
+}
+
+html.light-theme .el-button--default {
+  --el-button-bg-color:           var(--bg-card)      !important;
+  --el-button-text-color:         var(--text-primary)  !important;
+  --el-button-border-color:       var(--border-color)  !important;
+  --el-button-hover-text-color:   var(--accent)        !important;
+  --el-button-hover-bg-color:     var(--bg-elevated)   !important;
+  --el-button-hover-border-color: var(--accent)        !important;
+}
+
+html.light-theme .el-drawer {
+  background-color: var(--bg-card) !important;
+}
+
+html.light-theme .el-drawer__header {
+  color: var(--text-primary) !important;
+  border-bottom: 1px solid var(--border-color) !important;
+}
+
+html.light-theme .el-dialog {
+  background: var(--glass-card-bg) !important;
+  border: 1px solid var(--glass-card-border) !important;
+  box-shadow: 0 24px 70px rgba(31, 35, 42, 0.14) !important;
+}
+
+html.light-theme .el-dialog__header {
+  background-color: transparent !important;
+  border-bottom: 1px solid var(--border-color) !important;
+}
+
+html.light-theme .el-dialog__title {
+  color: var(--text-primary) !important;
+}
+
+html.light-theme .el-dialog__body {
+  background-color: transparent !important;
+  color: var(--text-primary) !important;
+}
+
+html.light-theme .el-dialog__close {
+  color: var(--text-secondary) !important;
+}
+
+html.light-theme .el-tag {
+  --el-tag-bg-color:     rgba(0, 122, 255, 0.08)  !important;
+  --el-tag-border-color: rgba(0, 122, 255, 0.2)   !important;
+  --el-tag-text-color:   var(--accent)             !important;
+}
+
+html.light-theme .el-table {
+  --el-table-bg-color:          var(--bg-card)     !important;
+  --el-table-tr-bg-color:       var(--bg-card)     !important;
+  --el-table-header-bg-color:   var(--bg-elevated) !important;
+  --el-table-border-color:      var(--border-color)!important;
+  --el-table-text-color:        var(--text-primary) !important;
+  --el-table-header-text-color: var(--text-secondary) !important;
+}
+
+html.light-theme .el-select__wrapper {
+  background-color: var(--bg-card) !important;
+  box-shadow: 0 0 0 1px var(--border-color) inset !important;
+}
+
+html.light-theme .el-popper {
+  background-color: var(--bg-card) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1) !important;
+}
+
+html.light-theme .el-popper__arrow::before {
+  background-color: var(--bg-card) !important;
+  border-color: var(--border-color) !important;
+}
+
+html.light-theme .el-message {
+  background-color: var(--bg-card) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
+}
+
+html.light-theme .el-notification {
+  background-color: var(--bg-card) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
+}
+
+html.light-theme .el-alert {
+  background-color: var(--bg-elevated) !important;
+  border-color: var(--border-color) !important;
+}
+
+html.light-theme .el-switch__core {
+  background-color: var(--border-color) !important;
+  border-color: var(--border-color) !important;
+}
+
+/* 浅色:内容面板不透明,关闭磨砂;层次交给阴影 */
+html.light-theme .el-card,
+html.light-theme .el-dialog,
+html.light-theme .el-drawer,
+html.light-theme .el-message,
+html.light-theme .el-notification,
+html.light-theme .el-popper {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+html.light-theme .el-card {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 12px rgba(0, 0, 0, 0.04) !important;
+}
+html.light-theme .el-dialog {
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.16) !important;
+}
+html.light-theme .el-drawer {
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.12) !important;
+}
+
+html.light-theme ::-webkit-scrollbar-track {
+  background: var(--bg-elevated);
+}
+
+html.light-theme ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+html.light-theme ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+}

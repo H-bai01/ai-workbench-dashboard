@@ -1,0 +1,27 @@
+{
+  "name": "AI 工作台总控",
+  "short_name": "AI总控",
+  "description": "本地 AI 工作台总控：统一查看 OpenClaw、Codex、Claude Code 的 Token、费用、Agent 工作脉冲、技能库与活动时间线",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

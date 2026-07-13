@@ -1,0 +1,12 @@
+{
+  "projectName": "项目名称",
+  "taskSummary": "任务名称",
+  "mode": "模式",
+  "activeStep": -1,
+  "steps": [
+    { "title": "需求确认" },
+    { "title": "任务执行" },
+    { "title": "结果检查" },
+    { "title": "完成交付" }
+  ]
+}

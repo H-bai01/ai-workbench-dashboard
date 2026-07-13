@@ -1,0 +1,93 @@
+{
+  "name": "Public CI",
+  "on": {
+    "push": { "branches": ["main"] },
+    "pull_request": {},
+    "workflow_dispatch": {}
+  },
+  "permissions": { "contents": "read" },
+  "concurrency": {
+    "group": "ci-${{ github.workflow }}-${{ github.ref }}",
+    "cancel-in-progress": true
+  },
+  "jobs": {
+    "unix-isolated": {
+      "name": "${{ matrix.os }} / Node ${{ matrix.node }}",
+      "runs-on": "${{ matrix.os }}",
+      "permissions": { "contents": "read" },
+      "timeout-minutes": 45,
+      "strategy": {
+        "fail-fast": false,
+        "matrix": {
+          "os": ["ubuntu-latest", "macos-latest"],
+          "node": ["22.13.0", "24.x"]
+        }
+      },
+      "env": { "NPM_CONFIG_REGISTRY": "https://registry.npmjs.org" },
+      "steps": [
+        {
+          "name": "Checkout",
+          "uses": "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+          "with": { "persist-credentials": false }
+        },
+        {
+          "name": "Set up Node",
+          "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+          "with": {
+            "node-version": "${{ matrix.node }}",
+            "cache": "npm",
+            "registry-url": "https://registry.npmjs.org"
+          }
+        },
+        { "name": "Install locked dependencies", "run": "npm ci --ignore-scripts" },
+        {
+          "name": "Install Chromium system dependencies",
+          "if": "runner.os == 'Linux'",
+          "run": "npx --no-install playwright install --with-deps chromium"
+        },
+        {
+          "name": "Install Chromium",
+          "if": "runner.os == 'macOS'",
+          "run": "npx --no-install playwright install chromium"
+        },
+        {
+          "name": "Select controlled browser",
+          "shell": "bash",
+          "run": "browser_path=\"$(node -e \"import('playwright').then(({ chromium }) => process.stdout.write(chromium.executablePath()))\")\"\ntest -x \"$browser_path\"\nprintf 'OPENCLAW_TEST_BROWSER=%s\\n' \"$browser_path\" >> \"$GITHUB_ENV\""
+        },
+        { "name": "Run isolated public CI", "run": "npm run test:ci" },
+        { "name": "Audit official registry", "run": "npm audit --registry=https://registry.npmjs.org" }
+      ]
+    },
+    "windows-compile": {
+      "name": "Windows compile-only / Node ${{ matrix.node }}",
+      "runs-on": "windows-latest",
+      "permissions": { "contents": "read" },
+      "timeout-minutes": 30,
+      "strategy": {
+        "fail-fast": false,
+        "matrix": { "node": ["22.13.0", "24.x"] }
+      },
+      "env": { "NPM_CONFIG_REGISTRY": "https://registry.npmjs.org" },
+      "steps": [
+        {
+          "name": "Checkout",
+          "uses": "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+          "with": { "persist-credentials": false }
+        },
+        {
+          "name": "Set up Node",
+          "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+          "with": {
+            "node-version": "${{ matrix.node }}",
+            "cache": "npm",
+            "registry-url": "https://registry.npmjs.org"
+          }
+        },
+        { "name": "Install locked dependencies", "run": "npm ci --ignore-scripts" },
+        { "name": "Run pure tests and build", "run": "npm run test:ci:pure" },
+        { "name": "Audit official registry", "run": "npm audit --registry=https://registry.npmjs.org" }
+      ]
+    }
+  }
+}

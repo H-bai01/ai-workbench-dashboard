@@ -1,0 +1,302 @@
+{
+  "schemaVersion": 1,
+  "product": "ai-workbench-dashboard",
+  "statement": "Third-party names and marks are retained only to accurately identify compatible, integrated, or monitored products. Their presence does not imply affiliation, sponsorship, or endorsement. The project favicon and PWA icon are repository-native neutral geometry.",
+  "fixedEvidence": {
+    "vite": {
+      "commit": "5d95f1631bfde08ee2613a53517dd5ea5d388cda",
+      "faviconBlob": "6893eb13237060adc0c968a690149a49faa2d7d3",
+      "iconsBlob": "e9522193d9f796a9748e9ad8c952a5df73c87db9",
+      "repository": "https://github.com/vitejs/vite"
+    },
+    "markdownMark": {
+      "commit": "99572b4a4f71b4ea2b1186a30f440ff2fcf66d27",
+      "repository": "https://github.com/dcurtis/markdown-mark",
+      "rightsStatus": "CC0 public-domain dedication for the Markdown Mark; local card styling is modified"
+    },
+    "simpleIconsOpenAiHistory": {
+      "removalCommit": "6ad4d3add5ed668b4a3ad061ef7a18fb2a5309af",
+      "url": "https://github.com/simple-icons/simple-icons/commit/6ad4d3add5ed668b4a3ad061ef7a18fb2a5309af",
+      "rightsBoundary": "Historical Simple Icons provenance and CC0 do not automatically grant OpenAI trademark or redistribution rights"
+    }
+  },
+  "assets": [
+    {
+      "path": "public/app-logos/chatgpt-white-black.svg",
+      "brand": "OpenAI / ChatGPT",
+      "sourceStatus": "fixed_source_not_proven",
+      "sourceUrl": null,
+      "currentUse": "Codex local-usage source identification",
+      "rightsStatus": "OpenAI brand rules apply; exact official asset status unverified",
+      "rulesUrl": "https://openai.com/brand/",
+      "publicationDecision": "include_direction_confirmed_rights_review_required"
+    },
+    {
+      "path": "public/app-logos/codex-app.png",
+      "brand": "OpenAI / Codex",
+      "sourceStatus": "fixed_source_not_proven",
+      "sourceUrl": null,
+      "currentUse": "Codex application identification",
+      "rightsStatus": "OpenAI brand rules apply; exact official asset status unverified",
+      "rulesUrl": "https://openai.com/brand/",
+      "publicationDecision": "include_direction_confirmed_rights_review_required"
+    },
+    {
+      "path": "public/model-logos/openai.svg",
+      "brand": "OpenAI",
+      "sourceStatus": "matches_historical_simple_icons_path",
+      "sourceUrl": "https://github.com/simple-icons/simple-icons/commit/6ad4d3add5ed668b4a3ad061ef7a18fb2a5309af",
+      "currentUse": "OpenAI model identification",
+      "rightsStatus": "Simple Icons history is not an OpenAI trademark or redistribution license",
+      "rulesUrl": "https://openai.com/brand/",
+      "publicationDecision": "include_direction_confirmed_rights_review_required"
+    },
+    {
+      "path": "public/app-logos/claude-app-orange.png",
+      "brand": "Anthropic / Claude",
+      "sourceStatus": "fixed_source_not_proven",
+      "sourceUrl": null,
+      "currentUse": "Claude Code application identification",
+      "rightsStatus": "Exact official asset and public brand permission unverified",
+      "rulesUrl": null,
+      "publicationDecision": "include_direction_confirmed_rights_review_required"
+    },
+    {
+      "path": "public/model-logos/anthropic.svg",
+      "brand": "Anthropic / Claude",
+      "sourceStatus": "geometry_matches_simple_icons_claude_mark_but_fixed_source_not_recorded",
+      "sourceUrl": null,
+      "currentUse": "Claude model identification; filename says anthropic while the mark is Claude",
+      "rightsStatus": "Individual mark rights remain with the brand owner",
+      "rulesUrl": null,
+      "publicationDecision": "include_direction_confirmed_rights_review_required"
+    },
+    {
+      "path": "public/app-logos/openclaw-lobster.png",
+      "brand": "OpenClaw",
+      "sourceStatus": "fixed_source_not_proven",
+      "sourceUrl": null,
+      "currentUse": "OpenClaw application identification",
+      "rightsStatus": "Repository code license does not automatically prove logo rights",
+      "rulesUrl": "https://github.com/openclaw/openclaw",
+      "publicationDecision": "include_direction_confirmed_rights_review_required"
+    },
+    {
+      "path": "public/model-logos/google.svg",
+      "brand": "Google",
+      "sourceStatus": "geometry_matches_simple_icons_but_fixed_source_not_recorded",
+      "sourceUrl": null,
+      "currentUse": "Google model identification",
+      "rightsStatus": "Approved, unmodified asset requirement must be checked",
+      "rulesUrl": "https://about.google/brand-resource-center/",
+      "publicationDecision": "include_direction_confirmed_rights_review_required"
+    },
+    {
+      "path": "public/skill-logos/google.svg",
+      "brand": "Google",
+      "sourceStatus": "custom_tile_source_not_proven",
+      "sourceUrl": null,
+      "currentUse": "Google-related skill identification",
+      "rightsStatus": "Custom wrapper and embedded mark require brand review",
+      "rulesUrl": "https://about.google/brand-resource-center/",
+      "publicationDecision": "include_direction_confirmed_rights_review_required"
+    },
+    {
+      "path": "public/model-logos/deepseek.svg",
+      "brand": "DeepSeek",
+      "sourceStatus": "geometry_matches_simple_icons_but_fixed_source_not_recorded",
+      "sourceUrl": null,
+      "currentUse": "DeepSeek model identification",
+      "rightsStatus": "Official terms restrict unauthorized brand use",
+      "rulesUrl": "https://cdn.deepseek.com/policies/en-US/deepseek-terms-of-use.html",
+      "publicationDecision": "include_direction_confirmed_rights_review_required"
+    },
+    {
+      "path": "public/model-logos/minimax.svg",
+      "brand": "MiniMax",
+      "sourceStatus": "geometry_matches_simple_icons_but_fixed_source_not_recorded",
+      "sourceUrl": null,
+      "currentUse": "MiniMax model identification",
+      "rightsStatus": "Official terms reserve brand rights",
+      "rulesUrl": "https://platform.minimax.io/protocol/terms-of-service",
+      "publicationDecision": "include_direction_confirmed_rights_review_required"
+    },
+    {
+      "path": "public/model-logos/qwen.svg",
+      "brand": "Qwen",
+      "sourceStatus": "geometry_matches_simple_icons_but_fixed_source_not_recorded",
+      "sourceUrl": null,
+      "currentUse": "Qwen model identification",
+      "rightsStatus": "Official terms reserve brand rights",
+      "rulesUrl": "https://qwen.ai/termsservice",
+      "publicationDecision": "include_direction_confirmed_rights_review_required"
+    },
+    {
+      "path": "public/skill-logos/1password.svg",
+      "brand": "1Password",
+      "sourceStatus": "custom_tile_source_not_proven",
+      "sourceUrl": null,
+      "currentUse": "1Password skill identification",
+      "rightsStatus": "Integration-identification rules apply; exact asset status unverified",
+      "rulesUrl": "https://1password.com/legal/api-sdk-terms-of-service",
+      "publicationDecision": "include_direction_confirmed_rights_review_required"
+    },
+    {
+      "path": "public/skill-logos/apple.svg",
+      "brand": "Apple",
+      "sourceStatus": "custom_tile_source_not_proven",
+      "sourceUrl": null,
+      "currentUse": "Apple-related skill identification",
+      "rightsStatus": "Apple graphic-logo rules require separate review",
+      "rulesUrl": "https://www.apple.com/legal/intellectual-property/guidelinesfor3rdparties.html",
+      "publicationDecision": "include_direction_confirmed_rights_review_required"
+    },
+    {
+      "path": "public/skill-logos/github.svg",
+      "brand": "GitHub",
+      "sourceStatus": "custom_tile_source_not_proven",
+      "sourceUrl": null,
+      "currentUse": "GitHub skill identification",
+      "rightsStatus": "Permitted integration use must follow GitHub logo rules",
+      "rulesUrl": "https://brand.github.com/foundations/logo",
+      "publicationDecision": "include_direction_confirmed_rights_review_required"
+    },
+    {
+      "path": "public/skill-logos/excel.svg",
+      "brand": "Microsoft Excel",
+      "sourceStatus": "custom_letter_tile",
+      "sourceUrl": null,
+      "currentUse": "Spreadsheet skill identification",
+      "rightsStatus": "Microsoft product-name and visual-brand rules require review",
+      "rulesUrl": "https://www.microsoft.com/en-us/legal/intellectualproperty/trademarks",
+      "publicationDecision": "include_direction_confirmed_rights_review_required"
+    },
+    {
+      "path": "public/skill-logos/word.svg",
+      "brand": "Microsoft Word",
+      "sourceStatus": "custom_letter_tile",
+      "sourceUrl": null,
+      "currentUse": "Document skill identification",
+      "rightsStatus": "Microsoft product-name and visual-brand rules require review",
+      "rulesUrl": "https://www.microsoft.com/en-us/legal/intellectualproperty/trademarks",
+      "publicationDecision": "include_direction_confirmed_rights_review_required"
+    },
+    {
+      "path": "public/skill-logos/ppt.svg",
+      "brand": "Microsoft PowerPoint",
+      "sourceStatus": "custom_letter_tile",
+      "sourceUrl": null,
+      "currentUse": "Presentation skill identification",
+      "rightsStatus": "Microsoft product-name and visual-brand rules require review",
+      "rulesUrl": "https://www.microsoft.com/en-us/legal/intellectualproperty/trademarks",
+      "publicationDecision": "include_direction_confirmed_rights_review_required"
+    },
+    {
+      "path": "public/skill-logos/feishu.png",
+      "brand": "Feishu",
+      "sourceStatus": "fixed_source_not_proven",
+      "sourceUrl": null,
+      "currentUse": "Feishu skill identification",
+      "rightsStatus": "Exact official asset and public brand permission unverified",
+      "rulesUrl": "https://open.feishu.cn/",
+      "publicationDecision": "include_direction_confirmed_rights_review_required"
+    },
+    {
+      "path": "public/skill-logos/feishu.svg",
+      "brand": "Feishu",
+      "sourceStatus": "fixed_source_not_proven",
+      "sourceUrl": null,
+      "currentUse": "Feishu skill identification",
+      "rightsStatus": "Exact official asset and public brand permission unverified",
+      "rulesUrl": "https://open.feishu.cn/",
+      "publicationDecision": "include_direction_confirmed_rights_review_required"
+    },
+    {
+      "path": "public/skill-logos/nodejs.svg",
+      "brand": "Node.js",
+      "sourceStatus": "custom_tile_source_not_proven",
+      "sourceUrl": null,
+      "currentUse": "Node.js skill identification",
+      "rightsStatus": "Node.js visual guidelines apply",
+      "rulesUrl": "https://nodejs.org/static/documents/foundation-visual-guidelines.pdf",
+      "publicationDecision": "include_direction_confirmed_rights_review_required"
+    },
+    {
+      "path": "public/skill-logos/python.svg",
+      "brand": "Python",
+      "sourceStatus": "custom_tile_source_not_proven",
+      "sourceUrl": null,
+      "currentUse": "Python skill identification",
+      "rightsStatus": "Nominative use and attribution requirements apply",
+      "rulesUrl": "https://www.python.org/psf/trademarks/",
+      "publicationDecision": "include_direction_confirmed_rights_review_required"
+    },
+    {
+      "path": "public/skill-logos/markdown.svg",
+      "brand": "Markdown Mark",
+      "sourceStatus": "modified_mark_in_custom_card",
+      "sourceUrl": "https://github.com/dcurtis/markdown-mark/tree/99572b4a4f71b4ea2b1186a30f440ff2fcf66d27",
+      "currentUse": "Markdown, MarkItDown, and Mermaid skill identification",
+      "rightsStatus": "Markdown Mark is CC0; local card wrapper is modified and must be documented",
+      "rulesUrl": "https://github.com/dcurtis/markdown-mark/blob/99572b4a4f71b4ea2b1186a30f440ff2fcf66d27/README.md",
+      "publicationDecision": "include_direction_confirmed_with_notice"
+    }
+  ],
+  "nonBrandMedia": [
+    {
+      "path": "public/app-icon.svg",
+      "publicationDecision": "include",
+      "purpose": "Repository-native neutral geometric PWA icon"
+    },
+    {
+      "path": "public/avatars/default.svg",
+      "publicationDecision": "include",
+      "purpose": "Neutral default avatar"
+    },
+    {
+      "path": "public/favicon.svg",
+      "publicationDecision": "include",
+      "purpose": "Repository-native neutral geometric favicon"
+    },
+    {
+      "path": "public/skill-logos/browser.svg",
+      "publicationDecision": "include",
+      "purpose": "Generic browser skill icon"
+    },
+    {
+      "path": "public/skill-logos/default.svg",
+      "publicationDecision": "include",
+      "purpose": "Generic fallback skill icon"
+    },
+    {
+      "path": "public/skill-logos/design.svg",
+      "publicationDecision": "include",
+      "purpose": "Generic design skill icon"
+    },
+    {
+      "path": "public/skill-logos/health.svg",
+      "publicationDecision": "include",
+      "purpose": "Generic health skill icon"
+    },
+    {
+      "path": "public/skill-logos/pdf.svg",
+      "publicationDecision": "include",
+      "purpose": "Generic PDF text icon; not registered as a vendor mark"
+    },
+    {
+      "path": "public/skill-logos/search.svg",
+      "publicationDecision": "include",
+      "purpose": "Generic search skill icon"
+    },
+    {
+      "path": "public/skill-logos/terminal.svg",
+      "publicationDecision": "include",
+      "purpose": "Generic terminal skill icon"
+    },
+    {
+      "path": "public/skill-logos/weather.svg",
+      "publicationDecision": "include",
+      "purpose": "Generic weather skill icon"
+    }
+  ]
+}
