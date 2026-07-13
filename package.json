@@ -3,6 +3,15 @@
   "private": true,
   "version": "2.9.0",
   "description": "AI Workbench Dashboard - a local-first dashboard for OpenClaw, Codex, and Claude Code.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/H-bai01/ai-workbench-dashboard.git"
+  },
+  "homepage": "https://github.com/H-bai01/ai-workbench-dashboard#readme",
+  "bugs": {
+    "url": "https://github.com/H-bai01/ai-workbench-dashboard/issues"
+  },
   "type": "module",
   "engines": {
     "node": ">=22.13.0"

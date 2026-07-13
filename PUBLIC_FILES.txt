@@ -2,6 +2,7 @@
 .github/workflows/ci.yml
 .gitignore
 .vscode/extensions.json
+LICENSE
 PUBLIC_FILES.txt
 PUBLIC_SNAPSHOT.md
 README.md
