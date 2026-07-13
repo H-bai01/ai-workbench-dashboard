@@ -166,11 +166,16 @@ before(async () => {
   fs.symlinkSync(outsideSecret, path.join(refsDir, 'escape.md'))
   const testSessionsDir = path.join(openclawDir, 'agents', 'test-agent', 'sessions')
   fs.mkdirSync(testSessionsDir, { recursive: true })
-  fs.writeFileSync(path.join(testSessionsDir, 'prototype-keys.jsonl'), [
+  const sessionFixtureBaseMs = Date.now()
+  const prototypeSession = path.join(testSessionsDir, 'prototype-keys.jsonl')
+  fs.writeFileSync(prototypeSession, [
     { type: 'message', message: { role: 'assistant', content: [{ type: 'toolCall', name: '__proto__' }] } },
     { type: 'message', message: { role: 'assistant', content: [{ type: 'toolCall', name: 'constructor' }] } },
     { type: 'message', message: { role: 'assistant', content: [{ type: 'toolCall', name: 'prototype' }] } },
   ].map(value => JSON.stringify(value)).join('\n'))
+  // Linux runners may assign identical mtimes to files created in the same tick.
+  // Keep this non-redaction fixture deterministically older than redaction-sample.jsonl.
+  fs.utimesSync(prototypeSession, new Date(sessionFixtureBaseMs - 2000), new Date(sessionFixtureBaseMs - 2000))
   const nowIso = new Date().toISOString()
   const redactionSession = path.join(testSessionsDir, 'redaction-sample.jsonl')
   fs.writeFileSync(redactionSession, [
@@ -182,6 +187,7 @@ before(async () => {
     ] } },
     { type: 'message', timestamp: nowIso, message: { role: 'toolResult', toolName: 'fixture-tool', toolCallId: 'fixture-call', content: [{ type: 'text', text: `redaction-marker result ${gatewaySecret} ${token} ${nestedSecrets.slice(1).join(' ')}` }] } },
   ].map(value => JSON.stringify(value)).join('\n'))
+  fs.utimesSync(redactionSession, new Date(sessionFixtureBaseMs - 1000), new Date(sessionFixtureBaseMs - 1000))
   const projectDir = path.join(workspace, 'admin', 'projects', 'redaction-project')
   fs.mkdirSync(projectDir, { recursive: true })
   fs.writeFileSync(path.join(projectDir, 'README.md'), `# redaction-marker\n${gatewaySecret}\n${token}\n${structuredSecret}\n${nestedSecrets.join('\n')}\n`)
