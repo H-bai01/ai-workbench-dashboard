@@ -9,9 +9,11 @@ SHA256SUMS.txt
 SOURCE_PROVENANCE.md
 THIRD_PARTY_NOTICES.md
 TRADEMARKS.md
+docs/macos-lifecycle.md
 docs/持续集成.md
 eslint.config.js
 index.html
+install.sh
 package-lock.json
 package.json
 public/app-icon.svg
@@ -52,6 +54,7 @@ public/sw.js
 public/workflow-progress-example.json
 release/brand-assets.json
 release/source-provenance.json
+rollback.sh
 scripts/browser-secret-exposure.test.mjs
 scripts/ci-foundation.test.mjs
 scripts/cognitive-engine.mjs
@@ -64,6 +67,8 @@ scripts/local-ai-status.mjs
 scripts/local-ai-status.test.mjs
 scripts/local_whisper_fast.py
 scripts/log-privacy.test.mjs
+scripts/macos-lifecycle.test.mjs
+scripts/macos/common.sh
 scripts/memory-tree.mjs
 scripts/openclaw-public-ngrok.sh
 scripts/output-redaction.test.mjs
@@ -176,7 +181,11 @@ src/views/Dashboard.vue
 src/vite-env.d.ts
 start.bat
 start.sh
+status.sh
+stop.sh
 tsconfig.app.json
 tsconfig.json
 tsconfig.node.json
+uninstall.sh
+upgrade.sh
 vite.config.ts

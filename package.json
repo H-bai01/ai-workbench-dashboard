@@ -28,6 +28,7 @@
     "test:security": "node --test --test-concurrency=1 scripts/output-redaction.test.mjs scripts/safe-record.test.mjs scripts/security-boundary.test.mjs scripts/security-http-integration.test.mjs scripts/browser-secret-exposure.test.mjs scripts/security-browser-media.test.mjs scripts/security-browser-dynamic-keys.test.mjs scripts/package-lock-integrity.test.mjs",
     "test:security:real": "node --test --test-concurrency=1 scripts/security-real-gateway.test.mjs",
     "test:start:isolated": "node --test --test-concurrency=1 scripts/start-isolated.test.mjs",
+    "test:macos:lifecycle": "node --test --test-concurrency=1 scripts/macos-lifecycle.test.mjs",
     "scan:secrets": "node scripts/secret-scan.mjs",
     "audit:security": "npm audit --registry=https://registry.npmjs.org",
     "lint": "eslint . --fix",
