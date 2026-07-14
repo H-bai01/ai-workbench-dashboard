@@ -71,6 +71,8 @@ scripts/log-privacy.test.mjs
 scripts/macos-lifecycle.test.mjs
 scripts/macos/common.sh
 scripts/memory-tree.mjs
+scripts/npm-cli.mjs
+scripts/npm-package.test.mjs
 scripts/openclaw-public-ngrok.sh
 scripts/output-redaction.test.mjs
 scripts/package-lock-integrity.test.mjs

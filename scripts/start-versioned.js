@@ -1,10 +1,17 @@
 import { spawn } from 'child_process'
+import { createRequire } from 'node:module'
 import net from 'node:net'
 import path from 'node:path'
 import { installPrivacyConsole, installProcessErrorPrivacy } from '../src/utils/log-privacy.mjs'
 
 installPrivacyConsole(console, { scope: 'launcher' })
 installProcessErrorPrivacy(process, console, { scope: 'launcher' })
+
+const require = createRequire(import.meta.url)
+
+function resolvePackageBin(packageName, ...segments) {
+  return path.join(path.dirname(require.resolve(`${packageName}/package.json`)), ...segments)
+}
 
 const PROFILES = {
   v2: { label: '2.0', frontendPort: 31021, backendPort: 31022 },
@@ -141,7 +148,7 @@ process.on('SIGTERM', () => {
   process.exit(0)
 })
 
-const viteBin = path.join(process.cwd(), 'node_modules', 'vite', 'bin', 'vite.js')
+const viteBin = resolvePackageBin('vite', 'bin', 'vite.js')
 const backendNodeArgs = process.versions.node.startsWith('22.') ? ['--experimental-sqlite'] : []
 start('backend', process.execPath, [...backendNodeArgs, 'scripts/unified-service.js'], backendEnv)
 start('frontend', process.execPath, [viteBin, '--host', frontendHost, '--port', String(profile.frontendPort), '--strictPort'], frontendEnv)

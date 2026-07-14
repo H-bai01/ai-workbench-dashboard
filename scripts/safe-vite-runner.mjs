@@ -1,9 +1,16 @@
 import { spawn } from 'node:child_process'
+import { createRequire } from 'node:module'
 import path from 'node:path'
 import { installPrivacyConsole, installProcessErrorPrivacy } from '../src/utils/log-privacy.mjs'
 
 installPrivacyConsole(console, { scope: 'vite_runner' })
 installProcessErrorPrivacy(process, console, { scope: 'vite_runner' })
+
+const require = createRequire(import.meta.url)
+
+function resolvePackageBin(packageName, ...segments) {
+  return path.join(path.dirname(require.resolve(`${packageName}/package.json`)), ...segments)
+}
 
 const allowedModes = new Set(['dev', 'build', 'preview'])
 const mode = String(process.argv[2] || 'dev').toLowerCase()
@@ -66,12 +73,12 @@ async function main() {
   }
 
   if (mode === 'build') {
-    const vueTscBin = path.join(process.cwd(), 'node_modules', 'vue-tsc', 'bin', 'vue-tsc.js')
+    const vueTscBin = resolvePackageBin('vue-tsc', 'bin', 'vue-tsc.js')
     const typeCheckCode = await runChild('typecheck', vueTscBin, ['-b'])
     if (typeCheckCode !== 0) return typeCheckCode
   }
 
-  const viteBin = path.join(process.cwd(), 'node_modules', 'vite', 'bin', 'vite.js')
+  const viteBin = resolvePackageBin('vite', 'bin', 'vite.js')
   const viteArgs = mode === 'dev' ? forwardedArgs : [mode, ...forwardedArgs]
   return runChild('vite', viteBin, viteArgs)
 }

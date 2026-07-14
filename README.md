@@ -63,6 +63,23 @@ npm run start:v2
 
 默认打开 `http://127.0.0.1:31021`。
 
+### 通过 npm 直接运行
+
+Node.js 22.13.0 或更高版本的用户也可以直接运行 npm 正式包：
+
+```bash
+npx ai-workbench-dashboard@2.9.0
+```
+
+也可以先全局安装：
+
+```bash
+npm install --global ai-workbench-dashboard@2.9.0
+ai-workbench-dashboard start
+```
+
+npm 入口只启动本机 Dashboard，不会安装、停止或重启 OpenClaw Gateway。服务仍只监听回环地址，按 `Ctrl+C` 可停止前台运行。
+
 macOS 用户如需使用独立的 LaunchAgent 安装、升级、回退与卸载入口，请参阅 [macOS 生命周期工具](docs/macos-lifecycle.md)。
 
 HTTPS 语音包装器当前暂时停用。请统一使用 `npm run start:v2`；远程访问、ngrok 和公网入口默认关闭。
