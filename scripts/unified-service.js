@@ -2709,7 +2709,15 @@ function ensureUsageBucket(map, key) {
 
 const CODEX_HOME = path.join(os.homedir(), '.codex')
 const CLAUDE_HOME = path.join(os.homedir(), '.claude')
-const LOCAL_AI_USAGE_TTL = 30 * 1000
+const LOCAL_AI_USAGE_FRESH_MS = Math.max(
+  10,
+  parseInt(process.env.OPENCLAW_LOCAL_AI_USAGE_FRESH_MS || '30000', 10) || 30_000
+)
+const LOCAL_AI_USAGE_RETENTION_MS = Math.max(
+  LOCAL_AI_USAGE_FRESH_MS,
+  parseInt(process.env.OPENCLAW_LOCAL_AI_USAGE_RETENTION_MS || '86400000', 10) || 86_400_000
+)
+const LOCAL_AI_USAGE_REFRESH_FAILURE_COOLDOWN_MS = 30_000
 const LOCAL_AI_USAGE_MAX_DAYS = Math.min(
   365,
   Math.max(7, parseInt(process.env.OPENCLAW_LOCAL_AI_USAGE_MAX_DAYS || '90', 10) || 90)
@@ -2717,22 +2725,29 @@ const LOCAL_AI_USAGE_MAX_DAYS = Math.min(
 const LOCAL_AI_USAGE_CACHE_MAX_ENTRIES = 8
 const localAiUsageCache = new Map()
 const localAiUsageInFlight = new Map()
+const localAiUsageRefreshFailures = new Map()
+let localAiUsageRefreshTail = Promise.resolve()
 let localAiUsageCacheGeneration = 0
 
 function clearLocalAiUsageCache() {
   localAiUsageCacheGeneration += 1
   localAiUsageCache.clear()
   localAiUsageInFlight.clear()
+  localAiUsageRefreshFailures.clear()
 }
 
 function pruneLocalAiUsageCache(now = Date.now()) {
   for (const [key, cached] of localAiUsageCache) {
-    if (!cached || (now - cached.at) >= LOCAL_AI_USAGE_TTL) localAiUsageCache.delete(key)
+    if (!cached || (now - cached.at) >= LOCAL_AI_USAGE_RETENTION_MS) {
+      localAiUsageCache.delete(key)
+      localAiUsageRefreshFailures.delete(key)
+    }
   }
   while (localAiUsageCache.size > LOCAL_AI_USAGE_CACHE_MAX_ENTRIES) {
     const oldestKey = localAiUsageCache.keys().next().value
     if (oldestKey === undefined) break
     localAiUsageCache.delete(oldestKey)
+    localAiUsageRefreshFailures.delete(oldestKey)
   }
 }
 
@@ -3166,20 +3181,7 @@ async function collectClaudeCodeUsage(range, billingConfig) {
   return finalizeLocalApp(app)
 }
 
-async function collectLocalAiUsage(range, billingConfig) {
-  const cacheKey = String(range.key || 'default')
-  const now = Date.now()
-  const generation = localAiUsageCacheGeneration
-  pruneLocalAiUsageCache(now)
-  const cached = localAiUsageCache.get(cacheKey)
-  if (cached && (now - cached.at) < LOCAL_AI_USAGE_TTL) {
-    localAiUsageCache.delete(cacheKey)
-    localAiUsageCache.set(cacheKey, cached)
-    return cached.result
-  }
-  if (localAiUsageInFlight.has(cacheKey)) return localAiUsageInFlight.get(cacheKey)
-
-  const task = (async () => {
+async function buildLocalAiUsageResult(range, billingConfig) {
     const apps = await Promise.all([
       collectCodexUsage(range, billingConfig),
       collectClaudeCodeUsage(range, billingConfig),
@@ -3226,20 +3228,88 @@ async function collectLocalAiUsage(range, billingConfig) {
       totals,
       updatedAt: new Date().toISOString(),
     }
-    if (generation === localAiUsageCacheGeneration) {
-      localAiUsageCache.delete(cacheKey)
-      localAiUsageCache.set(cacheKey, { at: Date.now(), result })
-      pruneLocalAiUsageCache()
-    }
     return result
-  })()
+}
+
+function localAiUsageResponse(result, { state, refreshing = false, refreshFailed = false, ageMs = 0 }) {
+  return {
+    ...result,
+    cache: {
+      state,
+      refreshing,
+      refreshFailed,
+      ageMs: Math.max(0, Math.round(ageMs)),
+    },
+  }
+}
+
+function scheduleLocalAiUsageRefresh(cacheKey, range, billingConfig) {
+  if (localAiUsageInFlight.has(cacheKey)) return localAiUsageInFlight.get(cacheKey)
+
+  const generation = localAiUsageCacheGeneration
+  const task = localAiUsageRefreshTail
+    .catch(() => undefined)
+    .then(async () => {
+      try {
+        const result = await buildLocalAiUsageResult(range, billingConfig)
+        if (generation === localAiUsageCacheGeneration) {
+          localAiUsageCache.delete(cacheKey)
+          localAiUsageCache.set(cacheKey, { at: Date.now(), result })
+          localAiUsageRefreshFailures.delete(cacheKey)
+          pruneLocalAiUsageCache()
+        }
+        return result
+      } catch (error) {
+        if (generation === localAiUsageCacheGeneration) {
+          localAiUsageRefreshFailures.set(cacheKey, Date.now())
+        }
+        throw error
+      }
+    })
+
+  localAiUsageRefreshTail = task.catch(() => undefined)
 
   localAiUsageInFlight.set(cacheKey, task)
-  try {
-    return await task
-  } finally {
+  task.then(() => {
     if (localAiUsageInFlight.get(cacheKey) === task) localAiUsageInFlight.delete(cacheKey)
+  }, () => {
+    if (localAiUsageInFlight.get(cacheKey) === task) localAiUsageInFlight.delete(cacheKey)
+  })
+  return task
+}
+
+async function collectLocalAiUsage(range, billingConfig, options = {}) {
+  const cacheKey = String(range.key || 'default')
+  const now = Date.now()
+  pruneLocalAiUsageCache(now)
+  const cached = localAiUsageCache.get(cacheKey)
+
+  if (cached) {
+    const ageMs = now - cached.at
+    localAiUsageCache.delete(cacheKey)
+    localAiUsageCache.set(cacheKey, cached)
+    if (ageMs < LOCAL_AI_USAGE_FRESH_MS) {
+      return localAiUsageResponse(cached.result, { state: 'fresh', ageMs })
+    }
+
+    const failedAt = localAiUsageRefreshFailures.get(cacheKey) || 0
+    const refreshFailed = !options.forceRefresh
+      && failedAt > 0
+      && (now - failedAt) < LOCAL_AI_USAGE_REFRESH_FAILURE_COOLDOWN_MS
+    if (!refreshFailed) {
+      if (options.forceRefresh) localAiUsageRefreshFailures.delete(cacheKey)
+      void scheduleLocalAiUsageRefresh(cacheKey, range, billingConfig).catch(() => undefined)
+    }
+    return localAiUsageResponse(cached.result, {
+      state: 'stale',
+      refreshing: !refreshFailed,
+      refreshFailed,
+      ageMs,
+    })
   }
+
+  const result = await scheduleLocalAiUsageRefresh(cacheKey, range, billingConfig)
+  return localAiUsageResponse(result, { state: 'fresh' })
 }
 
 /**
@@ -6864,7 +6934,9 @@ export const server = http.createServer(async (req, res) => {
       const billingConfig = readEffectiveBillingConfig()
 
       const range = buildLocalUsageRange(url.searchParams)
-      const result = await collectLocalAiUsage(range, billingConfig)
+      const result = await collectLocalAiUsage(range, billingConfig, {
+        forceRefresh: url.searchParams.get('refresh') === '1',
+      })
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify(result))
     } catch (e) {

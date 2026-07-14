@@ -16,7 +16,13 @@ let calculateUsageCostWithBilling
 let observationPriceConfigured
 let resolveBillingConfig
 let serviceServer
-const isolatedKeys = ['HOME', 'USERPROFILE', 'OPENCLAW_SKIP_DOTENV']
+const isolatedKeys = [
+  'HOME',
+  'USERPROFILE',
+  'OPENCLAW_SKIP_DOTENV',
+  'OPENCLAW_LOCAL_AI_USAGE_FRESH_MS',
+  'OPENCLAW_LOCAL_AI_USAGE_RETENTION_MS',
+]
 const originalEnvironment = new Map(isolatedKeys.map((key) => [key, process.env[key]]))
 
 before(async () => {
@@ -26,6 +32,8 @@ before(async () => {
   process.env.HOME = tempHome
   process.env.USERPROFILE = tempHome
   process.env.OPENCLAW_SKIP_DOTENV = '1'
+  process.env.OPENCLAW_LOCAL_AI_USAGE_FRESH_MS = '25'
+  process.env.OPENCLAW_LOCAL_AI_USAGE_RETENTION_MS = '60000'
   const serviceUrl = pathToFileURL(path.join(process.cwd(), 'scripts', 'unified-service.js')).href
   const service = await import(serviceUrl)
   calculateUsageCostWithBilling = service.calculateUsageCostWithBilling
@@ -179,8 +187,11 @@ test('本地用量扫描按范围缓存、复用进行中任务并并行读取�
   const source = fs.readFileSync(path.join(import.meta.dirname, 'unified-service.js'), 'utf8')
   assert.match(source, /const localAiUsageCache = new Map\(\)/)
   assert.match(source, /const localAiUsageInFlight = new Map\(\)/)
+  assert.match(source, /let localAiUsageRefreshTail = Promise\.resolve\(\)/)
   assert.match(source, /let localAiUsageCacheGeneration = 0/)
   assert.match(source, /if \(localAiUsageInFlight\.has\(cacheKey\)\) return localAiUsageInFlight\.get\(cacheKey\)/)
+  assert.match(source, /localAiUsageRefreshTail\s*\.catch\(\(\) => undefined\)\s*\.then/)
+  assert.match(source, /state: 'stale',[\s\S]*refreshing: !refreshFailed/)
   assert.match(source, /const apps = await Promise\.all\(\[\s*collectCodexUsage\(range, billingConfig\),\s*collectClaudeCodeUsage\(range, billingConfig\),/)
   assert.match(source, /clearLocalAiUsageCache\(\)/)
   assert.match(source, /if \(generation === localAiUsageCacheGeneration\)/)
@@ -190,4 +201,50 @@ test('本地用量扫描按范围缓存、复用进行中任务并并行读取�
     source.indexOf("if (pathname === '/api/cost-timeline'"),
   )
   assert.equal((summaryHandler.match(/await collectLocalAiUsage\(/g) || []).length, 1)
+})
+
+test('过期范围立即返回上一份完整结果并在后台替换缓存', async () => {
+  const address = serviceServer.address()
+  const localToken = fs.readFileSync(path.join(tempHome, '.openclaw', 'dashboard-local-token'), 'utf8').trim()
+  const sessionsDir = path.join(tempHome, '.codex', 'sessions', '2026', '07', '14')
+  const timestamp = new Date().toISOString()
+  const rows = [
+    { timestamp, type: 'session_meta', payload: { id: 'background-refresh-session', cwd: tempHome, model: 'gpt-5.6-sol' } },
+    {
+      timestamp,
+      type: 'event_msg',
+      payload: {
+        type: 'token_count',
+        info: { last_token_usage: { input_tokens: 500, output_tokens: 0, total_tokens: 500 } },
+      },
+    },
+  ]
+  fs.writeFileSync(
+    path.join(sessionsDir, 'background-refresh-session.jsonl'),
+    `${rows.map((row) => JSON.stringify(row)).join('\n')}\n`,
+  )
+  await new Promise(resolve => setTimeout(resolve, 35))
+
+  const fetchUsage = async () => {
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/local-ai-usage?days=1`, {
+      headers: { 'X-Dashboard-Token': localToken },
+    })
+    assert.equal(response.status, 200)
+    return response.json()
+  }
+
+  const stale = await fetchUsage()
+  assert.equal(stale.cache.state, 'stale')
+  assert.equal(stale.cache.refreshing, true)
+  assert.equal(stale.apps.find((app) => app.id === 'codex').byModel['gpt-5.6-sol'].tokens, 6_000_000)
+
+  const deadline = Date.now() + 2000
+  let refreshed = stale
+  while (Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 20))
+    refreshed = await fetchUsage()
+    const tokens = refreshed.apps.find((app) => app.id === 'codex').byModel['gpt-5.6-sol'].tokens
+    if (tokens === 6_000_500) break
+  }
+  assert.equal(refreshed.apps.find((app) => app.id === 'codex').byModel['gpt-5.6-sol'].tokens, 6_000_500)
 })

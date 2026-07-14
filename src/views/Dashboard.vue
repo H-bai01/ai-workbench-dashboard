@@ -150,7 +150,7 @@
             >{{ opt.label }}</button>
           </div>
           <span
-            v-if="tokenUsageSnapshotLoading && tokenUsageSnapshotReady && !tokenUsageSnapshotBlocking"
+            v-if="(tokenUsageSnapshotLoading || tokenUsageSnapshotServerRefreshing) && tokenUsageSnapshotReady && !tokenUsageSnapshotBlocking"
             class="usage-snapshot-refreshing"
             role="status"
           ><i aria-hidden="true"></i>正在后台更新…</span>
@@ -181,7 +181,7 @@
       </div>
       <div v-if="tokenUsageSnapshotError && !tokenUsageSnapshotLoading" class="usage-snapshot-error" role="status">
         <span>{{ tokenUsageSnapshotError }}</span>
-        <button type="button" @click="refreshTokenUsageSnapshot()">重新加载</button>
+        <button type="button" @click="refreshTokenUsageSnapshot({ force: true })">重新加载</button>
       </div>
       <div
         class="cockpit-inner"
@@ -1616,6 +1616,7 @@ const tokenUsageSnapshotLoading = ref(false)
 const tokenUsageSnapshotBlocking = ref(true)
 const tokenUsageSnapshotReady = ref(false)
 const tokenUsageSnapshotError = ref('')
+const tokenUsageSnapshotServerRefreshing = ref(false)
 const tokenUsageSnapshotRange = ref<TokenMiniRangeValue>(DEFAULT_TOKEN_MINI_RANGE)
 const tokenUsageSnapshotCustomRange = ref<[string, string] | null>(null)
 const tokenMiniLoading = computed(() => tokenUsageSnapshotBlocking.value)
@@ -1634,6 +1635,7 @@ const monitorShowHidden = ref(false)
 const monitorSourceFilter = ref<PulseAppId[]>(['openclaw', 'codex', 'claude-code'])
 const monitorHiddenKeys = ref<string[]>([])
 let localAiUsageTimer: ReturnType<typeof setInterval> | null = null
+let tokenUsageSnapshotRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let tokenUsageSnapshotRequestId = 0
 let tokenUsageSnapshotAbortController: AbortController | null = null
 let localAiStatusTimer: ReturnType<typeof setInterval> | null = null
@@ -1887,8 +1889,12 @@ function localAiUsageQuery(
   return 'days=all'
 }
 
-async function refreshTokenUsageSnapshot(options: { blocking?: boolean } = {}): Promise<void> {
+async function refreshTokenUsageSnapshot(options: { blocking?: boolean, force?: boolean } = {}): Promise<void> {
   const requestId = ++tokenUsageSnapshotRequestId
+  if (tokenUsageSnapshotRefreshTimer) {
+    clearTimeout(tokenUsageSnapshotRefreshTimer)
+    tokenUsageSnapshotRefreshTimer = null
+  }
   tokenUsageSnapshotAbortController?.abort()
   const controller = new AbortController()
   tokenUsageSnapshotAbortController = controller
@@ -1898,7 +1904,8 @@ async function refreshTokenUsageSnapshot(options: { blocking?: boolean } = {}): 
   const days = getTokenMiniRequestDays(range, customRange)
   const granularityQuery = range === 'today' ? '&granularity=hour' : ''
   const timelineUrl = `/api/cost-timeline?days=${encodeURIComponent(String(days))}${granularityQuery}`
-  const localUsageUrl = `/api/local-ai-usage?${localAiUsageQuery(range, customRange)}`
+  const forceRefreshQuery = options.force === true ? '&refresh=1' : ''
+  const localUsageUrl = `/api/local-ai-usage?${localAiUsageQuery(range, customRange)}${forceRefreshQuery}`
   const blocking = options.blocking === true || !tokenUsageSnapshotReady.value || tokenUsageSnapshotBlocking.value
 
   tokenUsageSnapshotLoading.value = true
@@ -1924,8 +1931,19 @@ async function refreshTokenUsageSnapshot(options: { blocking?: boolean } = {}): 
     tokenUsageSnapshotRange.value = range
     tokenUsageSnapshotCustomRange.value = customRange ? [...customRange] : null
     tokenUsageSnapshotReady.value = true
+    const cacheState = localUsageData?.cache
+    tokenUsageSnapshotServerRefreshing.value = cacheState?.refreshing === true
+    if (cacheState?.refreshFailed === true) {
+      tokenUsageSnapshotError.value = '后台更新失败，已保留上一份完整数据。'
+    } else if (cacheState?.refreshing === true) {
+      tokenUsageSnapshotRefreshTimer = setTimeout(() => {
+        tokenUsageSnapshotRefreshTimer = null
+        if (requestId === tokenUsageSnapshotRequestId) void refreshTokenUsageSnapshot()
+      }, 10 * 1000)
+    }
   } catch (error) {
     if (controller.signal.aborted || requestId !== tokenUsageSnapshotRequestId) return
+    tokenUsageSnapshotServerRefreshing.value = false
     tokenUsageSnapshotError.value = '完整统计加载失败，已保留上一份完整数据。'
   } finally {
     if (requestId === tokenUsageSnapshotRequestId) {
@@ -3298,6 +3316,10 @@ onMounted(() => {
 onUnmounted(() => {
   tokenUsageSnapshotAbortController?.abort()
   tokenUsageSnapshotAbortController = null
+  if (tokenUsageSnapshotRefreshTimer) {
+    clearTimeout(tokenUsageSnapshotRefreshTimer)
+    tokenUsageSnapshotRefreshTimer = null
+  }
   if (clockTimer) {
     clearInterval(clockTimer)
     clockTimer = null

@@ -28,6 +28,7 @@ let releaseInitialLocalUsage
 let initialLocalUsageGate
 let snapshotScenario = 'default'
 let delayedMonthRequests = 0
+let backgroundRefreshRequests = 0
 let releaseDelayedMonth
 let delayedMonthGate
 
@@ -298,6 +299,13 @@ before(async () => {
         status = 500
         body = { ok: false, error: 'synthetic_failure' }
       } else if (snapshotScenario === 'retry') body = localUsageBody(1200)
+      else if (snapshotScenario === 'background') {
+        backgroundRefreshRequests += 1
+        body = localUsageBody(backgroundRefreshRequests === 1 ? 2500 : 3000)
+        body.cache = backgroundRefreshRequests === 1
+          ? { state: 'stale', refreshing: true, refreshFailed: false, ageMs: 60000 }
+          : { state: 'fresh', refreshing: false, refreshFailed: false, ageMs: 0 }
+      }
       else if (snapshotScenario === 'reserved') {
         body = {
           ok: true,
@@ -330,6 +338,7 @@ before(async () => {
       } else if (snapshotScenario === 'race' && isToday) body = { ok: true, timeline: snapshotTimeline(700, true) }
       else if (snapshotScenario === 'failure') body = { ok: true, timeline: snapshotTimeline(7000) }
       else if (snapshotScenario === 'retry') body = { ok: true, timeline: snapshotTimeline(800) }
+      else if (snapshotScenario === 'background') body = { ok: true, timeline: snapshotTimeline(900) }
       else if (snapshotScenario === 'reserved') body = { ok: true, timeline: localTimeline }
       else body = { ok: true, timeline: snapshotTimeline(100) }
     }
@@ -433,6 +442,18 @@ test('刷新失败保留上一份完整快照并可重试为新的完整结果',
   await errorBanner.waitFor({ state: 'hidden' })
   await page.locator('.usage-snapshot-refreshing').waitFor({ state: 'hidden' })
   assert.match(await page.locator('.token-kpi-row').innerText(), /当前 Token\s*2,000/)
+})
+
+test('后台缓存刷新完成后页面自动取回新结果', async () => {
+  snapshotScenario = 'background'
+  backgroundRefreshRequests = 0
+  await page.locator('.token-mini-ranges .token-mini-chip').filter({ hasText: /^3 天$/ }).click()
+  const refreshing = page.locator('.usage-snapshot-refreshing')
+  await refreshing.waitFor({ state: 'visible' })
+  assert.match(await page.locator('.token-kpi-row').innerText(), /当前 Token\s*3,400/)
+  await refreshing.waitFor({ state: 'hidden', timeout: 15000 })
+  assert.equal(backgroundRefreshRequests, 2)
+  assert.match(await page.locator('.token-kpi-row').innerText(), /当前 Token\s*3,900/)
 })
 
 test('真实 Chrome 同时处理三种来源的保留键而不污染原型或重复累计', async () => {
