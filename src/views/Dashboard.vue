@@ -1611,6 +1611,8 @@ const tokenUsageSnapshotLoading = ref(false)
 const tokenUsageSnapshotBlocking = ref(true)
 const tokenUsageSnapshotReady = ref(false)
 const tokenUsageSnapshotError = ref('')
+const tokenUsageSnapshotRange = ref<TokenMiniRangeValue>(DEFAULT_TOKEN_MINI_RANGE)
+const tokenUsageSnapshotCustomRange = ref<[string, string] | null>(null)
 const tokenMiniLoading = computed(() => tokenUsageSnapshotBlocking.value)
 const tokenMiniSelectedModels = ref<string[]>([])
 const tokenMiniHoverIndex = ref<number | null>(null)
@@ -1914,6 +1916,8 @@ async function refreshTokenUsageSnapshot(options: { blocking?: boolean } = {}): 
     tokenMiniTimeline.value = Array.isArray(timelineData.timeline) ? timelineData.timeline : []
     localAiUsageApps.value = Array.isArray(localUsageData.apps) ? localUsageData.apps : []
     localAiUsageTimeline.value = Array.isArray(localUsageData.timeline) ? localUsageData.timeline : []
+    tokenUsageSnapshotRange.value = range
+    tokenUsageSnapshotCustomRange.value = customRange ? [...customRange] : null
     tokenUsageSnapshotReady.value = true
   } catch (error) {
     if (controller.signal.aborted || requestId !== tokenUsageSnapshotRequestId) return
@@ -2066,21 +2070,22 @@ function isDateInTokenMiniRange(dateKey: string): boolean {
   const today = startOfLocalDay(new Date())
   const target = dateKeyToTime(dateKey)
   const datePart = timelineDatePart(dateKey)
+  const publishedRange = tokenUsageSnapshotRange.value
   if (!Number.isFinite(target)) return false
-  if (tokenMiniRange.value === 'today') return datePart === formatDateKey(today)
-  if (tokenMiniRange.value === '3d') return target >= addDays(today, -2).getTime() && target <= today.getTime()
-  if (tokenMiniRange.value === '7d') return target >= addDays(today, -6).getTime() && target <= today.getTime()
-  if (tokenMiniRange.value === 'month') {
+  if (publishedRange === 'today') return datePart === formatDateKey(today)
+  if (publishedRange === '3d') return target >= addDays(today, -2).getTime() && target <= today.getTime()
+  if (publishedRange === '7d') return target >= addDays(today, -6).getTime() && target <= today.getTime()
+  if (publishedRange === 'month') {
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).getTime()
     return target >= monthStart && target <= today.getTime()
   }
-  if (tokenMiniRange.value === 'lastMonth') {
+  if (publishedRange === 'lastMonth') {
     const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1).getTime()
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).getTime()
     return target >= lastMonthStart && target < monthStart
   }
-  if (tokenMiniRange.value === 'custom') {
-    const range = tokenMiniCustomRange.value
+  if (publishedRange === 'custom') {
+    const range = tokenUsageSnapshotCustomRange.value
     if (!range) return true
     const start = dateKeyToTime(range[0])
     const end = dateKeyToTime(range[1])
@@ -2179,11 +2184,12 @@ const tokenMiniMetricLabel = computed(() => {
   return tokenMiniMetric.value === 'tokens' ? 'Token' : 'API 等价费用'
 })
 const tokenMiniRangeLabel = computed(() => {
-  if (tokenMiniRange.value === 'custom') {
-    const range = tokenMiniCustomRange.value
+  const publishedRange = tokenUsageSnapshotRange.value
+  if (publishedRange === 'custom') {
+    const range = tokenUsageSnapshotCustomRange.value
     return range ? `${formatShortDate(range[0])}-${formatShortDate(range[1])}` : '自定义'
   }
-  return TOKEN_MINI_RANGES.find((opt) => opt.value === tokenMiniRange.value)?.label || '全部'
+  return TOKEN_MINI_RANGES.find((opt) => opt.value === publishedRange)?.label || '全部'
 })
 const contributionEyebrow = computed(() => tokenMiniMetric.value === 'cost' ? 'API 等价费用排行' : '贡献排行')
 const contributionTitle = computed(() => tokenMiniMetric.value === 'cost' ? '谁最能花钱' : '谁最能干')
@@ -2471,7 +2477,7 @@ function clearTokenMiniHover(): void {
 
 const scopedUsageTotals = computed<UsageDatum>(() => {
   if (!tokenUsageSnapshotReady.value) return emptyUsage()
-  if (tokenMiniRangeTimeline.value.length > 0 || tokenMiniRange.value !== 'all') {
+  if (tokenMiniRangeTimeline.value.length > 0 || tokenUsageSnapshotRange.value !== 'all') {
     return tokenMiniTotals.value
   }
 
@@ -2522,7 +2528,7 @@ const scopedAgentUsageMap = computed<Record<string, UsageDatum>>(() => {
     }
   }
 
-  if (Object.keys(out).length === 0 && tokenMiniRange.value === 'all') {
+  if (Object.keys(out).length === 0 && tokenUsageSnapshotRange.value === 'all') {
     const byAgentByModel = store.globalUsage.byAgentByModel || {}
     let hasModelBreakdown = false
     for (const [agentId, byModel] of Object.entries(byAgentByModel)) {

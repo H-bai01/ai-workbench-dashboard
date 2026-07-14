@@ -88,11 +88,12 @@ function localDateKey(date = new Date()) {
   return `${year}-${month}-${day}`
 }
 
-function snapshotTimeline(tokens) {
-  return [{ date: localDateKey(), ...usage(tokens), byModel: {}, byAgentByModel: {} }]
+function snapshotTimeline(tokens, hourly = false) {
+  const date = hourly ? `${localDateKey()} 12:00` : localDateKey()
+  return [{ date, ...usage(tokens), byModel: {}, byAgentByModel: {} }]
 }
 
-function localUsageBody(tokens) {
+function localUsageBody(tokens, hourly = false) {
   const codexTokens = Math.floor(tokens * 0.4)
   const claudeTokens = tokens - codexTokens
   return {
@@ -113,7 +114,7 @@ function localUsageBody(tokens) {
         items: [{ id: 'claude-fixture', name: 'Claude fixture', type: 'session', project: '/tmp/claude-fixture', usage: usage(claudeTokens) }],
       },
     ],
-    timeline: snapshotTimeline(tokens),
+    timeline: snapshotTimeline(tokens, hourly),
   }
 }
 
@@ -292,7 +293,7 @@ before(async () => {
         delayedMonthRequests += 1
         await delayedMonthGate
         body = localUsageBody(222)
-      } else if (snapshotScenario === 'race' && isToday) body = localUsageBody(300)
+      } else if (snapshotScenario === 'race' && isToday) body = localUsageBody(300, true)
       else if (snapshotScenario === 'failure') {
         status = 500
         body = { ok: false, error: 'synthetic_failure' }
@@ -326,7 +327,7 @@ before(async () => {
         delayedMonthRequests += 1
         await delayedMonthGate
         body = { ok: true, timeline: snapshotTimeline(111) }
-      } else if (snapshotScenario === 'race' && isToday) body = { ok: true, timeline: snapshotTimeline(700) }
+      } else if (snapshotScenario === 'race' && isToday) body = { ok: true, timeline: snapshotTimeline(700, true) }
       else if (snapshotScenario === 'failure') body = { ok: true, timeline: snapshotTimeline(7000) }
       else if (snapshotScenario === 'retry') body = { ok: true, timeline: snapshotTimeline(800) }
       else if (snapshotScenario === 'reserved') body = { ok: true, timeline: localTimeline }
@@ -403,13 +404,23 @@ test('快速切换时间范围后迟到的旧请求不能覆盖最新完整快�
 })
 
 test('刷新失败保留上一份完整快照并可重试为新的完整结果', async () => {
+  const previousSnapshot = {
+    kpi: await page.locator('.token-kpi-row').innerText(),
+    chartTitle: await page.locator('.token-mini-chart-head > span').innerText(),
+    codex: await page.locator('.agent-pulse-app-tab').filter({ hasText: /Codex/ }).innerText(),
+    claude: await page.locator('.agent-pulse-app-tab').filter({ hasText: /Claude Code/ }).innerText(),
+  }
   snapshotScenario = 'failure'
   await page.locator('.token-mini-ranges .token-mini-chip').filter({ hasText: /^7 天$/ }).click()
   await page.locator('.cockpit-inner > .el-loading-mask').waitFor({ state: 'hidden' })
   const errorBanner = page.locator('.usage-snapshot-error')
   await errorBanner.waitFor({ state: 'visible' })
   assert.match(await errorBanner.innerText(), /完整统计加载失败/)
-  assert.match(await page.locator('.token-kpi-row').innerText(), /当前 Token\s*1,000/)
+  assert.equal(await page.locator('.token-kpi-row').innerText(), previousSnapshot.kpi)
+  assert.equal(await page.locator('.token-mini-chart-head > span').innerText(), previousSnapshot.chartTitle)
+  assert.equal(await page.locator('.agent-pulse-app-tab').filter({ hasText: /Codex/ }).innerText(), previousSnapshot.codex)
+  assert.equal(await page.locator('.agent-pulse-app-tab').filter({ hasText: /Claude Code/ }).innerText(), previousSnapshot.claude)
+  assert.match(previousSnapshot.kpi, /当前 Token\s*1,000/)
   assert.doesNotMatch(await page.locator('.token-kpi-row').innerText(), /7000/)
 
   snapshotScenario = 'retry'
