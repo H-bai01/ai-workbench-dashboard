@@ -23,6 +23,9 @@ let imageRequests
 let tracker
 let trackerPort
 let trackerRequests
+let localUsageRequestStarted = false
+let releaseInitialLocalUsage
+let initialLocalUsageGate
 
 let configuredAgents
 
@@ -77,6 +80,7 @@ function timelineFixture() {
 before(async () => {
   const executablePath = resolveTestBrowserExecutable()
   assert.ok(executablePath, '真实 Chrome/Chromium 是动态键安全测试的必要条件')
+  initialLocalUsageGate = new Promise(resolve => { releaseInitialLocalUsage = resolve })
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-browser-dynamic-keys-'))
   const home = path.join(root, 'home')
   fs.mkdirSync(home, { mode: 0o700 })
@@ -237,6 +241,8 @@ before(async () => {
         ...usage(33),
       }
     } else if (url.pathname === '/api/local-ai-usage') {
+      localUsageRequestStarted = true
+      await initialLocalUsageGate
       body = {
         ok: true,
         apps: [
@@ -263,6 +269,27 @@ after(async () => {
   await stop(frontend)
   await new Promise(resolve => tracker?.close(() => resolve()) || resolve())
   if (root) fs.rmSync(root, { recursive: true, force: true })
+})
+
+test('首页等待 OpenClaw 与本地用量都完成后才发布完整统计快照', async () => {
+  const snapshotMask = page.locator('.cockpit-section > .el-loading-mask')
+  try {
+    const deadline = Date.now() + 5000
+    while (!localUsageRequestStarted && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 20))
+    }
+    assert.equal(localUsageRequestStarted, true)
+    await snapshotMask.waitFor({ state: 'visible' })
+    assert.match(await snapshotMask.innerText(), /正在汇总完整统计/)
+    assert.match(await page.locator('.token-kpi-row').innerText(), /—/)
+  } finally {
+    releaseInitialLocalUsage()
+  }
+
+  await snapshotMask.waitFor({ state: 'hidden' })
+  const kpiText = await page.locator('.token-kpi-row').innerText()
+  assert.doesNotMatch(kpiText, /—/)
+  assert.match(kpiText, /当前 Token/)
 })
 
 test('真实 Chrome 同时处理三种来源的保留键而不污染原型或重复累计', async () => {

@@ -174,3 +174,20 @@ test('隔离接口重新读取 Codex 历史日志并返回 API 等价费用状�
   assert.equal(codex.byModel.unknown, undefined)
   assert.equal(codex.usage.priceStatus, 'partial')
 })
+
+test('本地用量扫描按范围缓存、复用进行中任务并并行读取两类客户端', () => {
+  const source = fs.readFileSync(path.join(import.meta.dirname, 'unified-service.js'), 'utf8')
+  assert.match(source, /const localAiUsageCache = new Map\(\)/)
+  assert.match(source, /const localAiUsageInFlight = new Map\(\)/)
+  assert.match(source, /let localAiUsageCacheGeneration = 0/)
+  assert.match(source, /if \(localAiUsageInFlight\.has\(cacheKey\)\) return localAiUsageInFlight\.get\(cacheKey\)/)
+  assert.match(source, /const apps = await Promise\.all\(\[\s*collectCodexUsage\(range, billingConfig\),\s*collectClaudeCodeUsage\(range, billingConfig\),/)
+  assert.match(source, /clearLocalAiUsageCache\(\)/)
+  assert.match(source, /if \(generation === localAiUsageCacheGeneration\)/)
+  assert.doesNotMatch(source, /cachedLocalAiUsageResult/)
+  const summaryHandler = source.slice(
+    source.indexOf("if (pathname === '/api/cost-summary'"),
+    source.indexOf("if (pathname === '/api/cost-timeline'"),
+  )
+  assert.equal((summaryHandler.match(/await collectLocalAiUsage\(/g) || []).length, 1)
+})

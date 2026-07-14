@@ -118,7 +118,12 @@
     </header>
 
     <!-- ========= 2. 指挥舱：Token + Agent 工作状态 ========= -->
-    <section class="cockpit-section" :style="{ order: pageModuleOrder('cockpit') }">
+    <section
+      class="cockpit-section"
+      :style="{ order: pageModuleOrder('cockpit') }"
+      v-loading="tokenUsageSnapshotBlocking"
+      element-loading-text="正在汇总完整统计…"
+    >
       <div class="scope-toolbar">
         <div class="scope-toolbar-main scope-toolbar-panel">
           <span class="scope-control-label">时间范围：</span>
@@ -171,6 +176,10 @@
           >全部模型</button>
         </div>
       </div>
+      <div v-if="tokenUsageSnapshotError && !tokenUsageSnapshotLoading" class="usage-snapshot-error" role="status">
+        <span>{{ tokenUsageSnapshotError }}</span>
+        <button type="button" @click="refreshTokenUsageSnapshot({ blocking: true })">重新加载</button>
+      </div>
       <div class="cockpit-inner">
         <article
           class="cockpit-card token-cockpit-card"
@@ -196,15 +205,15 @@
               <strong
                 :title="`按 1 USD = ¥${USD_TO_CNY_RATE} 估算`"
                 :style="{ color: tokenMiniMetric === 'cost' || tokenMiniMetric === 'both' ? COST_METRIC_COLOR : undefined }"
-              >{{ scopedUsdText }}</strong>
+              >{{ tokenUsageSnapshotReady ? scopedUsdText : '—' }}</strong>
             </div>
             <div>
               <span>API 等价人民币</span>
-              <strong :style="{ color: tokenMiniMetric === 'cost' || tokenMiniMetric === 'both' ? COST_METRIC_COLOR : undefined }">{{ scopedCostText }}</strong>
+              <strong :style="{ color: tokenMiniMetric === 'cost' || tokenMiniMetric === 'both' ? COST_METRIC_COLOR : undefined }">{{ tokenUsageSnapshotReady ? scopedCostText : '—' }}</strong>
             </div>
             <div>
               <span>当前 Token</span>
-              <strong :style="{ color: tokenMiniMetric === 'tokens' || tokenMiniMetric === 'both' ? TOKEN_METRIC_COLOR : undefined }">{{ scopedTokenText }}</strong>
+              <strong :style="{ color: tokenMiniMetric === 'tokens' || tokenMiniMetric === 'both' ? TOKEN_METRIC_COLOR : undefined }">{{ tokenUsageSnapshotReady ? scopedTokenText : '—' }}</strong>
             </div>
           </div>
           <div
@@ -1596,13 +1605,16 @@ const tokenMiniCurrentMetricColor = computed(() => (
   tokenMiniMetric.value === 'cost' ? COST_METRIC_COLOR : TOKEN_METRIC_COLOR
 ))
 const tokenMiniTimeline = ref<TimelineDay[]>([])
-const tokenMiniLoading = ref(false)
+const tokenUsageSnapshotLoading = ref(false)
+const tokenUsageSnapshotBlocking = ref(true)
+const tokenUsageSnapshotReady = ref(false)
+const tokenUsageSnapshotError = ref('')
+const tokenMiniLoading = computed(() => tokenUsageSnapshotBlocking.value)
 const tokenMiniSelectedModels = ref<string[]>([])
-const tokenMiniRequestId = ref(0)
 const tokenMiniHoverIndex = ref<number | null>(null)
 const localAiUsageApps = ref<LocalAiUsageApp[]>([])
 const localAiUsageTimeline = ref<TimelineDay[]>([])
-const localAiUsageLoading = ref(false)
+const localAiUsageLoading = computed(() => tokenUsageSnapshotLoading.value)
 const localAiStatusMap = ref<Record<string, LocalAiStatusItem>>(createSafeRecord())
 const selectedPulseAppId = ref<PulseAppId>('openclaw')
 const pulseStatusFilter = ref<PulseStatusFilter>('all')
@@ -1613,6 +1625,8 @@ const monitorShowHidden = ref(false)
 const monitorSourceFilter = ref<PulseAppId[]>(['openclaw', 'codex', 'claude-code'])
 const monitorHiddenKeys = ref<string[]>([])
 let localAiUsageTimer: ReturnType<typeof setInterval> | null = null
+let tokenUsageSnapshotRequestId = 0
+let tokenUsageSnapshotAbortController: AbortController | null = null
 let localAiStatusTimer: ReturnType<typeof setInterval> | null = null
 
 function toggleTokenMiniMetric(metric: TokenMiniSeriesKey): void {
@@ -1797,7 +1811,10 @@ function normalizeDateRange(value: string[] | null | undefined): [string, string
   return dateKeyToTime(first) <= dateKeyToTime(second) ? [first, second] : [second, first]
 }
 
-function getTokenMiniRequestDays(range: TokenMiniRangeValue): number | 'all' {
+function getTokenMiniRequestDays(
+  range: TokenMiniRangeValue,
+  customRange: [string, string] | null = tokenMiniCustomRange.value,
+): number | 'all' {
   const today = startOfLocalDay(new Date())
   if (range === 'today') return 1
   if (range === '3d') return 3
@@ -1808,7 +1825,7 @@ function getTokenMiniRequestDays(range: TokenMiniRangeValue): number | 'all' {
     return Math.min(90, Math.max(1, Math.ceil((today.getTime() - lastMonthStart.getTime()) / 86400_000) + 1))
   }
   if (range === 'custom') {
-    const start = tokenMiniCustomRange.value?.[0]
+    const start = customRange?.[0]
     if (!start) return 'all'
     const startTime = dateKeyToTime(start)
     if (!Number.isFinite(startTime)) return 'all'
@@ -1820,8 +1837,7 @@ function getTokenMiniRequestDays(range: TokenMiniRangeValue): number | 'all' {
 
 function setTokenMiniRange(range: TokenMiniRangeValue): void {
   tokenMiniRange.value = range
-  fetchTokenMiniTimeline(true)
-  fetchLocalAiUsage()
+  void refreshTokenUsageSnapshot({ blocking: true })
 }
 
 function setTokenMiniCustomRange(value: string[] | null): void {
@@ -1835,44 +1851,77 @@ function setTokenMiniCustomRange(value: string[] | null): void {
   tokenMiniCustomRange.value = normalized
   tokenMiniCustomRangeDraft.value = [...normalized]
   tokenMiniRange.value = 'custom'
-  fetchTokenMiniTimeline(true)
-  fetchLocalAiUsage()
+  void refreshTokenUsageSnapshot({ blocking: true })
 }
 
-function localAiUsageQuery(): string {
+function localAiUsageQuery(
+  range: TokenMiniRangeValue = tokenMiniRange.value,
+  customRange: [string, string] | null = tokenMiniCustomRange.value,
+): string {
   const today = startOfLocalDay(new Date())
   const makeRange = (start: Date, end: Date = today) => (
     `start=${encodeURIComponent(formatDateKey(start))}&end=${encodeURIComponent(formatDateKey(end))}`
   )
 
-  if (tokenMiniRange.value === 'today') return `${makeRange(today)}&granularity=hour`
-  if (tokenMiniRange.value === '3d') return `days=3`
-  if (tokenMiniRange.value === '7d') return `days=7`
-  if (tokenMiniRange.value === 'month') return makeRange(new Date(today.getFullYear(), today.getMonth(), 1))
-  if (tokenMiniRange.value === 'lastMonth') {
+  if (range === 'today') return `${makeRange(today)}&granularity=hour`
+  if (range === '3d') return `days=3`
+  if (range === '7d') return `days=7`
+  if (range === 'month') return makeRange(new Date(today.getFullYear(), today.getMonth(), 1))
+  if (range === 'lastMonth') {
     const start = new Date(today.getFullYear(), today.getMonth() - 1, 1)
     const end = new Date(today.getFullYear(), today.getMonth(), 0)
     return makeRange(start, end)
   }
-  if (tokenMiniRange.value === 'custom' && tokenMiniCustomRange.value) {
-    return `start=${encodeURIComponent(tokenMiniCustomRange.value[0])}&end=${encodeURIComponent(tokenMiniCustomRange.value[1])}`
+  if (range === 'custom' && customRange) {
+    return `start=${encodeURIComponent(customRange[0])}&end=${encodeURIComponent(customRange[1])}`
   }
   return 'days=all'
 }
 
-async function fetchLocalAiUsage(): Promise<void> {
-  localAiUsageLoading.value = true
+async function refreshTokenUsageSnapshot(options: { blocking?: boolean } = {}): Promise<void> {
+  const requestId = ++tokenUsageSnapshotRequestId
+  tokenUsageSnapshotAbortController?.abort()
+  const controller = new AbortController()
+  tokenUsageSnapshotAbortController = controller
+
+  const range = tokenMiniRange.value
+  const customRange = tokenMiniCustomRange.value ? [...tokenMiniCustomRange.value] as [string, string] : null
+  const days = getTokenMiniRequestDays(range, customRange)
+  const granularityQuery = range === 'today' ? '&granularity=hour' : ''
+  const timelineUrl = `/api/cost-timeline?days=${encodeURIComponent(String(days))}${granularityQuery}`
+  const localUsageUrl = `/api/local-ai-usage?${localAiUsageQuery(range, customRange)}`
+  const blocking = options.blocking === true || !tokenUsageSnapshotReady.value || tokenUsageSnapshotBlocking.value
+
+  tokenUsageSnapshotLoading.value = true
+  tokenUsageSnapshotBlocking.value = blocking
+  tokenUsageSnapshotError.value = ''
   try {
-    const res = await fetch(`/api/local-ai-usage?${localAiUsageQuery()}`)
-    if (!res.ok) return
-    const data = await res.json()
-    localAiUsageApps.value = Array.isArray(data.apps) ? data.apps : []
-    localAiUsageTimeline.value = Array.isArray(data.timeline) ? data.timeline : []
-  } catch {
-    localAiUsageApps.value = []
-    localAiUsageTimeline.value = []
+    const [timelineResponse, localUsageResponse] = await Promise.all([
+      fetch(timelineUrl, { signal: controller.signal }),
+      fetch(localUsageUrl, { signal: controller.signal }),
+    ])
+    if (!timelineResponse.ok || !localUsageResponse.ok) throw new Error('usage_snapshot_request_failed')
+
+    const [timelineData, localUsageData] = await Promise.all([
+      timelineResponse.json(),
+      localUsageResponse.json(),
+    ])
+    if (requestId !== tokenUsageSnapshotRequestId) return
+
+    // Vue 会在同一轮更新中提交这三项，页面不会先展示 OpenClaw 的部分结果。
+    tokenMiniTimeline.value = Array.isArray(timelineData.timeline) ? timelineData.timeline : []
+    localAiUsageApps.value = Array.isArray(localUsageData.apps) ? localUsageData.apps : []
+    localAiUsageTimeline.value = Array.isArray(localUsageData.timeline) ? localUsageData.timeline : []
+    tokenUsageSnapshotReady.value = true
+  } catch (error) {
+    if (controller.signal.aborted || requestId !== tokenUsageSnapshotRequestId) return
+    tokenUsageSnapshotError.value = '完整统计加载失败，已保留上一份完整数据。'
   } finally {
-    localAiUsageLoading.value = false
+    if (requestId === tokenUsageSnapshotRequestId) {
+      tokenUsageSnapshotLoading.value = false
+      tokenUsageSnapshotBlocking.value = false
+      tokenUsageSnapshotAbortController = null
+    }
   }
 }
 
@@ -1922,26 +1971,6 @@ async function fetchLocalAiStatus(): Promise<void> {
     localAiStatusMap.value = next
   } catch {
     // 状态接口失败时保留旧值，避免 UI 闪烁或误报。
-  }
-}
-
-async function fetchTokenMiniTimeline(clearExisting = false): Promise<void> {
-  const requestId = tokenMiniRequestId.value + 1
-  tokenMiniRequestId.value = requestId
-  tokenMiniLoading.value = true
-  if (clearExisting) tokenMiniTimeline.value = []
-  try {
-    const days = getTokenMiniRequestDays(tokenMiniRange.value)
-    const granularityQuery = tokenMiniRange.value === 'today' ? '&granularity=hour' : ''
-    const res = await fetch(`/api/cost-timeline?days=${encodeURIComponent(String(days))}${granularityQuery}`)
-    if (!res.ok) return
-    const data = await res.json()
-    if (requestId !== tokenMiniRequestId.value) return
-    tokenMiniTimeline.value = Array.isArray(data.timeline) ? data.timeline : []
-  } catch {
-    if (requestId === tokenMiniRequestId.value) tokenMiniTimeline.value = []
-  } finally {
-    if (requestId === tokenMiniRequestId.value) tokenMiniLoading.value = false
   }
 }
 
@@ -2439,6 +2468,7 @@ function clearTokenMiniHover(): void {
 }
 
 const scopedUsageTotals = computed<UsageDatum>(() => {
+  if (!tokenUsageSnapshotReady.value) return emptyUsage()
   if (tokenMiniRangeTimeline.value.length > 0 || tokenMiniRange.value !== 'all') {
     return tokenMiniTotals.value
   }
@@ -3070,7 +3100,7 @@ const statsCardsRaw = computed(() => [
   {
     id: 'total',
     label: '总计',
-    value: monitorTotalObjectCount.value,
+    value: tokenUsageSnapshotReady.value ? monitorTotalObjectCount.value : '…',
     icon: Odometer,
     iconClass: 'icon-blue',
     class: 'stat-total',
@@ -3079,7 +3109,7 @@ const statsCardsRaw = computed(() => [
   {
     id: 'running',
     label: '运行中',
-    value: monitorStatusCount('running'),
+    value: tokenUsageSnapshotReady.value ? monitorStatusCount('running') : '…',
     icon: VideoPlay,
     iconClass: 'icon-yellow',
     class: 'stat-running',
@@ -3088,7 +3118,7 @@ const statsCardsRaw = computed(() => [
   {
     id: 'idle',
     label: '空闲',
-    value: monitorStatusCount('idle'),
+    value: tokenUsageSnapshotReady.value ? monitorStatusCount('idle') : '…',
     icon: VideoPause,
     iconClass: 'icon-green',
     class: 'stat-idle',
@@ -3097,7 +3127,7 @@ const statsCardsRaw = computed(() => [
   {
     id: 'aborted',
     label: '已终止',
-    value: monitorStatusCount('aborted'),
+    value: tokenUsageSnapshotReady.value ? monitorStatusCount('aborted') : '…',
     icon: CircleClose,
     iconClass: 'icon-gray',
     class: 'stat-aborted',
@@ -3106,7 +3136,7 @@ const statsCardsRaw = computed(() => [
   {
     id: 'error',
     label: '错误',
-    value: monitorStatusCount('error'),
+    value: tokenUsageSnapshotReady.value ? monitorStatusCount('error') : '…',
     icon: CircleClose,
     iconClass: 'icon-red',
     class: 'stat-error',
@@ -3123,7 +3153,7 @@ const statsCardsRaw = computed(() => [
   {
     id: 'tokens',
     label: '当前口径 Token',
-    value: scopedTokenText.value,
+    value: tokenUsageSnapshotReady.value ? scopedTokenText.value : '汇总中',
     subtitle: topModelSummary.value || tokenMiniRangeLabel.value,
     icon: Odometer, iconClass: 'icon-orange', class: 'stat-tokens stat-clickable',
     onClick: () => openTokenDetail(),
@@ -3131,7 +3161,7 @@ const statsCardsRaw = computed(() => [
   {
     id: 'cost',
     label: '当前口径费用',
-    value: scopedCostText.value,
+    value: tokenUsageSnapshotReady.value ? scopedCostText.value : '汇总中',
     subtitle: `${tokenMiniRangeLabel.value} · ${tokenMiniModelScopeLabel.value}`,
     icon: Money, iconClass: 'icon-green', class: 'stat-cost stat-clickable',
     onClick: () => openTokenDetail(),
@@ -3197,8 +3227,7 @@ async function handleBillingSaved(): Promise<void> {
   await Promise.all([
     store.fetchGlobalUsage(),
     store.fetchCostSummary(),
-    fetchTokenMiniTimeline(true),
-    fetchLocalAiUsage(),
+    refreshTokenUsageSnapshot({ blocking: true }),
     fetchLocalAiStatus(),
   ])
 }
@@ -3243,16 +3272,19 @@ onMounted(() => {
   // REC-011: 加载超时提示 — 每 1 秒检查
   checkLoadingHint()
   loadingCheckTimer = setInterval(checkLoadingHint, 1000)
-  fetchTokenMiniTimeline(true)
-  fetchLocalAiUsage()
+  void refreshTokenUsageSnapshot({ blocking: true })
   fetchLocalAiStatus()
-  localAiUsageTimer = setInterval(fetchLocalAiUsage, 60 * 1000)
+  localAiUsageTimer = setInterval(() => {
+    void refreshTokenUsageSnapshot()
+  }, 60 * 1000)
   localAiStatusTimer = setInterval(fetchLocalAiStatus, 5 * 1000)
   // Sprint 7: cmd+K
   window.addEventListener('keydown', onGlobalKeydown)
 })
 
 onUnmounted(() => {
+  tokenUsageSnapshotAbortController?.abort()
+  tokenUsageSnapshotAbortController = null
   if (clockTimer) {
     clearInterval(clockTimer)
     clockTimer = null
@@ -3958,6 +3990,30 @@ onUnmounted(() => {
   box-shadow: var(--glass-inner-highlight), var(--glass-shadow);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
+}
+
+.usage-snapshot-error {
+  max-width: 1440px;
+  margin: -4px auto 14px;
+  padding: 9px 12px;
+  border: 1px solid rgba(255, 159, 10, 0.36);
+  border-radius: 10px;
+  color: #ffb340;
+  background: rgba(255, 159, 10, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.usage-snapshot-error button {
+  border: 0;
+  color: #0a84ff;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
 }
 
 .scope-toolbar-panel {

@@ -2714,9 +2714,27 @@ const LOCAL_AI_USAGE_MAX_DAYS = Math.min(
   365,
   Math.max(7, parseInt(process.env.OPENCLAW_LOCAL_AI_USAGE_MAX_DAYS || '90', 10) || 90)
 )
-let cachedLocalAiUsageKey = ''
-let cachedLocalAiUsageAt = 0
-let cachedLocalAiUsageResult = null
+const LOCAL_AI_USAGE_CACHE_MAX_ENTRIES = 8
+const localAiUsageCache = new Map()
+const localAiUsageInFlight = new Map()
+let localAiUsageCacheGeneration = 0
+
+function clearLocalAiUsageCache() {
+  localAiUsageCacheGeneration += 1
+  localAiUsageCache.clear()
+  localAiUsageInFlight.clear()
+}
+
+function pruneLocalAiUsageCache(now = Date.now()) {
+  for (const [key, cached] of localAiUsageCache) {
+    if (!cached || (now - cached.at) >= LOCAL_AI_USAGE_TTL) localAiUsageCache.delete(key)
+  }
+  while (localAiUsageCache.size > LOCAL_AI_USAGE_CACHE_MAX_ENTRIES) {
+    const oldestKey = localAiUsageCache.keys().next().value
+    if (oldestKey === undefined) break
+    localAiUsageCache.delete(oldestKey)
+  }
+}
 
 function localStartOfDayMs(date = new Date()) {
   const d = new Date(date)
@@ -3149,62 +3167,79 @@ async function collectClaudeCodeUsage(range, billingConfig) {
 }
 
 async function collectLocalAiUsage(range, billingConfig) {
-  const cacheKey = range.key
+  const cacheKey = String(range.key || 'default')
   const now = Date.now()
-  if (cachedLocalAiUsageResult && cachedLocalAiUsageKey === cacheKey && (now - cachedLocalAiUsageAt) < LOCAL_AI_USAGE_TTL) {
-    return cachedLocalAiUsageResult
+  const generation = localAiUsageCacheGeneration
+  pruneLocalAiUsageCache(now)
+  const cached = localAiUsageCache.get(cacheKey)
+  if (cached && (now - cached.at) < LOCAL_AI_USAGE_TTL) {
+    localAiUsageCache.delete(cacheKey)
+    localAiUsageCache.set(cacheKey, cached)
+    return cached.result
   }
+  if (localAiUsageInFlight.has(cacheKey)) return localAiUsageInFlight.get(cacheKey)
 
-  const apps = [
-    await collectCodexUsage(range, billingConfig),
-    await collectClaudeCodeUsage(range, billingConfig),
-  ]
-  const totals = createUsageTotals()
-  const timelineByDay = createKeyedDictionary()
-  if (range.granularity === 'hour') {
-    const start = new Date(range.startMs || Date.now())
-    start.setMinutes(0, 0, 0)
-    const endMs = Math.min(range.endMs || Date.now(), Date.now())
-    for (let t = start.getTime(); t <= endMs; t += 3600_000) {
-      ensureLocalTimelineBucket(timelineByDay, localHourKeyFromMs(t))
-    }
-  }
-  for (const app of apps) {
-    addUsageTotals(totals, app.usage)
-    for (const day of app.timeline || []) {
-      const bucket = ensureLocalTimelineBucket(timelineByDay, day.date)
-      addUsageTotals(bucket, day)
-      for (const [model, usage] of Object.entries(day.byModel || {})) {
-        addUsageTotals(ensureUsageBucket(bucket.byModel, model), usage)
+  const task = (async () => {
+    const apps = await Promise.all([
+      collectCodexUsage(range, billingConfig),
+      collectClaudeCodeUsage(range, billingConfig),
+    ])
+    const totals = createUsageTotals()
+    const timelineByDay = createKeyedDictionary()
+    if (range.granularity === 'hour') {
+      const start = new Date(range.startMs || Date.now())
+      start.setMinutes(0, 0, 0)
+      const endMs = Math.min(range.endMs || Date.now(), Date.now())
+      for (let t = start.getTime(); t <= endMs; t += 3600_000) {
+        ensureLocalTimelineBucket(timelineByDay, localHourKeyFromMs(t))
       }
-      for (const [sourceId, modelMap] of Object.entries(day.byAgentByModel || {})) {
-        if (!Object.hasOwn(bucket.byAgentByModel, sourceId)) bucket.byAgentByModel[sourceId] = createKeyedDictionary()
-        for (const [model, usage] of Object.entries(modelMap || {})) {
-          addUsageTotals(ensureUsageBucket(bucket.byAgentByModel[sourceId], model), usage)
+    }
+    for (const app of apps) {
+      addUsageTotals(totals, app.usage)
+      for (const day of app.timeline || []) {
+        const bucket = ensureLocalTimelineBucket(timelineByDay, day.date)
+        addUsageTotals(bucket, day)
+        for (const [model, usage] of Object.entries(day.byModel || {})) {
+          addUsageTotals(ensureUsageBucket(bucket.byModel, model), usage)
+        }
+        for (const [sourceId, modelMap] of Object.entries(day.byAgentByModel || {})) {
+          if (!Object.hasOwn(bucket.byAgentByModel, sourceId)) bucket.byAgentByModel[sourceId] = createKeyedDictionary()
+          for (const [model, usage] of Object.entries(modelMap || {})) {
+            addUsageTotals(ensureUsageBucket(bucket.byAgentByModel[sourceId], model), usage)
+          }
         }
       }
     }
+    const timeline = Object.values(timelineByDay).sort((a, b) => a.date.localeCompare(b.date))
+    const result = {
+      range: {
+        startMs: range.startMs,
+        endMs: range.endMs,
+        all: range.all,
+        requestedAll: Boolean(range.requestedAll),
+        capped: Boolean(range.capped),
+        cappedDays: range.cappedDays || LOCAL_AI_USAGE_MAX_DAYS,
+        granularity: range.granularity || 'day',
+      },
+      apps,
+      timeline,
+      totals,
+      updatedAt: new Date().toISOString(),
+    }
+    if (generation === localAiUsageCacheGeneration) {
+      localAiUsageCache.delete(cacheKey)
+      localAiUsageCache.set(cacheKey, { at: Date.now(), result })
+      pruneLocalAiUsageCache()
+    }
+    return result
+  })()
+
+  localAiUsageInFlight.set(cacheKey, task)
+  try {
+    return await task
+  } finally {
+    if (localAiUsageInFlight.get(cacheKey) === task) localAiUsageInFlight.delete(cacheKey)
   }
-  const timeline = Object.values(timelineByDay).sort((a, b) => a.date.localeCompare(b.date))
-  const result = {
-    range: {
-      startMs: range.startMs,
-      endMs: range.endMs,
-      all: range.all,
-      requestedAll: Boolean(range.requestedAll),
-      capped: Boolean(range.capped),
-      cappedDays: range.cappedDays || LOCAL_AI_USAGE_MAX_DAYS,
-      granularity: range.granularity || 'day',
-    },
-    apps,
-    timeline,
-    totals,
-    updatedAt: new Date().toISOString(),
-  }
-  cachedLocalAiUsageKey = cacheKey
-  cachedLocalAiUsageAt = now
-  cachedLocalAiUsageResult = result
-  return result
 }
 
 /**
@@ -6800,9 +6835,7 @@ export const server = http.createServer(async (req, res) => {
           fsSync.copyFileSync(BILLING_CONFIG_PATH, BILLING_CONFIG_PATH + '.bak')
         }
         fsSync.writeFileSync(BILLING_CONFIG_PATH, JSON.stringify(cfg, null, 2), 'utf-8')
-        cachedLocalAiUsageKey = ''
-        cachedLocalAiUsageAt = 0
-        cachedLocalAiUsageResult = null
+        clearLocalAiUsageCache()
         console.log('[billing-config POST] saved, models:', Object.keys(cfg.models).length)
         res.writeHead(200, { 'Content-Type': 'application/json' })
         res.end(JSON.stringify({ success: true, path: BILLING_CONFIG_PATH }))
@@ -6957,20 +6990,8 @@ export const server = http.createServer(async (req, res) => {
         }
       }
 
-      const localMonthUsage = await collectLocalAiUsage({
-        startMs: monthStartMs,
-        endMs: Date.now(),
-        all: false,
-        cappedDays: LOCAL_AI_USAGE_MAX_DAYS,
-        key: `cost-summary-local-month-${localDateKeyFromMs(monthStartMs)}`,
-      }, billingConfig)
+      const monthStartKey = localDateKeyFromMs(monthStartMs)
       const todayKey = localDateKeyFromMs(todayStartMs)
-      const localTodayCost = (localMonthUsage.timeline || [])
-        .filter((day) => day.date === todayKey)
-        .reduce((sum, day) => sum + (Number(day.cost) || 0), 0)
-      todayCost += localTodayCost
-      monthCost += Number(localMonthUsage.totals?.cost) || 0
-
       const localAllUsage = await collectLocalAiUsage({
         startMs: localMaxStartMs(Date.now()),
         endMs: Date.now(),
@@ -6978,8 +6999,14 @@ export const server = http.createServer(async (req, res) => {
         requestedAll: true,
         capped: true,
         cappedDays: LOCAL_AI_USAGE_MAX_DAYS,
-        key: `cost-summary-local-all-${LOCAL_AI_USAGE_MAX_DAYS}`,
+        granularity: 'day',
+        key: `all-capped-${LOCAL_AI_USAGE_MAX_DAYS}&granularity=day`,
       }, billingConfig)
+      for (const day of localAllUsage.timeline || []) {
+        const dayCost = Number(day.cost) || 0
+        if (day.date === todayKey) todayCost += dayCost
+        if (day.date >= monthStartKey) monthCost += dayCost
+      }
 
       // 预估本月总费用：按当前已过天数线性外推
       const monthForecast = dayOfMonth > 0 ? (monthCost / dayOfMonth) * daysInMonth : monthCost
