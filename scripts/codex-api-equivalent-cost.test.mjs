@@ -126,6 +126,32 @@ test('隔离接口重新读取 Codex 历史日志并返回 API 等价费用状�
     output_tokens: 0,
     total_tokens: 100,
   })
+  const delayedModelRows = [
+    { timestamp, type: 'session_meta', payload: { id: 'delayed-model-session', cwd: tempHome } },
+    {
+      timestamp,
+      type: 'event_msg',
+      payload: {
+        type: 'token_count',
+        info: {
+          last_token_usage: {
+            input_tokens: 1_000_000,
+            output_tokens: 0,
+            total_tokens: 1_000_000,
+          },
+        },
+      },
+    },
+    {
+      timestamp,
+      type: 'turn_context',
+      payload: { model: 'gpt-5.6-sol' },
+    },
+  ]
+  fs.writeFileSync(
+    path.join(sessionsDir, 'delayed-model-session.jsonl'),
+    `${delayedModelRows.map((row) => JSON.stringify(row)).join('\n')}\n`,
+  )
 
   await new Promise((resolve, reject) => {
     serviceServer.once('error', reject)
@@ -140,9 +166,11 @@ test('隔离接口重新读取 Codex 历史日志并返回 API 等价费用状�
   const payload = await response.json()
   const codex = payload.apps.find((app) => app.id === 'codex')
   assert.ok(codex)
-  assert.ok(Math.abs(codex.byModel['gpt-5.6-sol'].cost - 300.6) < 1e-9)
+  assert.ok(Math.abs(codex.byModel['gpt-5.6-sol'].cost - 336.6) < 1e-9)
+  assert.equal(codex.byModel['gpt-5.6-sol'].tokens, 6_000_000)
   assert.equal(codex.byModel['gpt-5.6-sol'].priceStatus, 'configured')
   assert.equal(codex.byModel['gpt-5.6-sol'].billingMode, 'per_token')
   assert.equal(codex.byModel['unknown-model'].priceStatus, 'unconfigured')
+  assert.equal(codex.byModel.unknown, undefined)
   assert.equal(codex.usage.priceStatus, 'partial')
 })

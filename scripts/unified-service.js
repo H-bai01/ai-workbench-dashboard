@@ -3022,6 +3022,7 @@ async function collectCodexUsage(range, billingConfig) {
       let conversationTitle = ''
       let currentCwd = ''
       let currentModel = 'unknown'
+      let firstObservedModel = ''
       let firstActivityMs = 0
       const usageEvents = []
       await forEachJsonlObject(file.path, async (entry) => {
@@ -3032,11 +3033,13 @@ async function collectCodexUsage(range, billingConfig) {
           conversationId = payload.id || conversationId
           currentCwd = payload.cwd || currentCwd
           currentModel = payload.model || currentModel
+          if (!firstObservedModel && payload.model) firstObservedModel = payload.model
           return
         }
         if (entry?.type === 'turn_context' && payload) {
           currentCwd = payload.cwd || currentCwd
           currentModel = payload.model || payload.collaboration_mode?.settings?.model || currentModel
+          if (!firstObservedModel && currentModel !== 'unknown') firstObservedModel = currentModel
           return
         }
         if (entry?.type === 'event_msg' && payload?.type === 'user_message' && !conversationTitle) {
@@ -3053,6 +3056,15 @@ async function collectCodexUsage(range, billingConfig) {
       })
 
       if (!usageEvents.length) continue
+      // 新版 Codex 会在部分会话开头先写 token_count，随后才写首个
+      // turn_context。只回填这些前导事件；整份会话都没有明确模型时仍保持
+      // unknown，避免把真正未知的用量猜成某个模型。
+      if (firstObservedModel) {
+        for (const event of usageEvents) {
+          if (event.model !== 'unknown') break
+          event.model = firstObservedModel
+        }
+      }
       const itemId = conversationId || localConversationIdFromFile(file.path)
       const item = ensureLocalItem(
         app,
