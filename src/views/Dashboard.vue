@@ -149,6 +149,11 @@
               @click="setTokenMiniRange(opt.value)"
             >{{ opt.label }}</button>
           </div>
+          <span
+            v-if="tokenUsageSnapshotLoading && tokenUsageSnapshotReady && !tokenUsageSnapshotBlocking"
+            class="usage-snapshot-refreshing"
+            role="status"
+          ><i aria-hidden="true"></i>正在后台更新…</span>
         </div>
         <div class="scope-toolbar-controls scope-toolbar-panel">
           <span class="scope-control-label">显示内容：</span>
@@ -176,7 +181,7 @@
       </div>
       <div v-if="tokenUsageSnapshotError && !tokenUsageSnapshotLoading" class="usage-snapshot-error" role="status">
         <span>{{ tokenUsageSnapshotError }}</span>
-        <button type="button" @click="refreshTokenUsageSnapshot({ blocking: true })">重新加载</button>
+        <button type="button" @click="refreshTokenUsageSnapshot()">重新加载</button>
       </div>
       <div
         class="cockpit-inner"
@@ -1841,7 +1846,7 @@ function getTokenMiniRequestDays(
 
 function setTokenMiniRange(range: TokenMiniRangeValue): void {
   tokenMiniRange.value = range
-  void refreshTokenUsageSnapshot({ blocking: true })
+  void refreshTokenUsageSnapshot()
 }
 
 function setTokenMiniCustomRange(value: string[] | null): void {
@@ -1855,7 +1860,7 @@ function setTokenMiniCustomRange(value: string[] | null): void {
   tokenMiniCustomRange.value = normalized
   tokenMiniCustomRangeDraft.value = [...normalized]
   tokenMiniRange.value = 'custom'
-  void refreshTokenUsageSnapshot({ blocking: true })
+  void refreshTokenUsageSnapshot()
 }
 
 function localAiUsageQuery(
@@ -4022,6 +4027,29 @@ onUnmounted(() => {
   background: transparent;
   font: inherit;
   cursor: pointer;
+}
+
+.usage-snapshot-refreshing {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #64a8ff;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.usage-snapshot-refreshing i {
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(10, 132, 255, 0.28);
+  border-top-color: #0a84ff;
+  border-radius: 50%;
+  animation: usage-snapshot-spin 0.8s linear infinite;
+}
+
+@keyframes usage-snapshot-spin {
+  to { transform: rotate(360deg); }
 }
 
 .scope-toolbar-panel {

@@ -383,6 +383,8 @@ test('首页等待 OpenClaw 与本地用量都完成后才发布完整统计快�
 test('快速切换时间范围后迟到的旧请求不能覆盖最新完整快照', async () => {
   snapshotScenario = 'race'
   delayedMonthRequests = 0
+  const refreshing = page.locator('.usage-snapshot-refreshing')
+  const snapshotMask = page.locator('.cockpit-inner > .el-loading-mask')
   try {
     await page.locator('.token-mini-ranges .token-mini-chip').filter({ hasText: /^本月$/ }).click()
     const deadline = Date.now() + 5000
@@ -390,9 +392,12 @@ test('快速切换时间范围后迟到的旧请求不能覆盖最新完整快�
       await new Promise(resolve => setTimeout(resolve, 20))
     }
     assert.equal(delayedMonthRequests, 2)
+    await refreshing.waitFor({ state: 'visible' })
+    assert.equal(await snapshotMask.isVisible(), false)
+    assert.match(await page.locator('.token-kpi-row').innerText(), /当前 Token\s*600/)
 
     await page.locator('.token-mini-ranges .token-mini-chip').filter({ hasText: /^今天$/ }).click()
-    await page.locator('.cockpit-inner > .el-loading-mask').waitFor({ state: 'hidden' })
+    await refreshing.waitFor({ state: 'hidden' })
     assert.match(await page.locator('.token-kpi-row').innerText(), /当前 Token\s*1,000/)
   } finally {
     releaseDelayedMonth()
@@ -426,6 +431,7 @@ test('刷新失败保留上一份完整快照并可重试为新的完整结果',
   snapshotScenario = 'retry'
   await errorBanner.getByRole('button', { name: '重新加载' }).click()
   await errorBanner.waitFor({ state: 'hidden' })
+  await page.locator('.usage-snapshot-refreshing').waitFor({ state: 'hidden' })
   assert.match(await page.locator('.token-kpi-row').innerText(), /当前 Token\s*2,000/)
 })
 
