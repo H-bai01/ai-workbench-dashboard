@@ -9,7 +9,7 @@
   >
     <div class="bc-intro">
       <el-icon><InfoFilled /></el-icon>
-      <span>每个模型可单独选择计费方式：包月订阅 / 按 token 计费（支持时段折扣）/ 沿用默认。</span>
+      <span>按 token 单价用于计算 API 等价费用；包月订阅仅代表订阅口径，不会伪装成实际逐次账单。</span>
     </div>
 
     <el-scrollbar height="52vh" class="bc-scroll">
@@ -304,7 +304,7 @@ function autoAddUsedModels() {
   if (!localConfig.value) return
   for (const modelId of usedModelIds.value) {
     if (Object.hasOwn(localConfig.value.models, modelId)) continue  // 已有
-    const preset = ownValue(presetDefaults.value?.models, modelId)
+    const preset = presetForModel(modelId)
     if (preset) {
       localConfig.value.models[modelId] = JSON.parse(JSON.stringify(preset))
     } else {
@@ -319,6 +319,21 @@ function autoAddUsedModels() {
   }
 }
 
+function presetForModel(modelId: string): any {
+  const models = presetDefaults.value?.models
+  if (!models || typeof models !== 'object') return null
+  const exact = ownValue(models, modelId)
+  if (exact) return exact
+  const lower = modelId.toLowerCase()
+  const match = Object.keys(models)
+    .sort((a, b) => b.length - a.length)
+    .find((key) => {
+      const normalized = key.toLowerCase()
+      return lower.startsWith(`${normalized}-`) || lower.startsWith(`${normalized}:`)
+    })
+  return match ? ownValue(models, match) : null
+}
+
 function addModel() {
   const id = newModelId.value.trim()
   if (!id) return
@@ -326,7 +341,7 @@ function addModel() {
     ElMessage.warning(`"${id}" 已存在`)
     return
   }
-  const preset = ownValue(presetDefaults.value?.models, id)
+  const preset = presetForModel(id)
   localConfig.value.models[id] = preset ? JSON.parse(JSON.stringify(preset)) : {
     mode: 'per_token',
     inputPriceCNYPerMillion: 0,

@@ -40,7 +40,7 @@
         <div class="top-metric-switch" aria-label="查看指标">
           <button class="metric-switch-btn" :class="{ active: chartMetric === 'both' }" :disabled="chartLoading" type="button" @click="chartMetric = 'both'">全部</button>
           <button class="metric-switch-btn" :class="{ active: chartMetric === 'tokens' }" :disabled="chartLoading" type="button" @click="chartMetric = 'tokens'">Token</button>
-          <button class="metric-switch-btn" :class="{ active: chartMetric === 'cost' }" :disabled="chartLoading" type="button" @click="chartMetric = 'cost'">成本</button>
+          <button class="metric-switch-btn" :class="{ active: chartMetric === 'cost' }" :disabled="chartLoading" type="button" @click="chartMetric = 'cost'">API 等价费用</button>
         </div>
       </div>
     </div>
@@ -72,7 +72,7 @@
         </div>
       </div>
       <div class="period-glass period-glass--cost" v-if="chartMetric !== 'tokens'">
-        <div class="pg-head">费用</div>
+        <div class="pg-head">API 等价费用</div>
         <div class="pg-grid">
           <div class="pg-item"><span class="pg-label">今日</span><strong>{{ formatPeriodCost(todayUsage) }}</strong></div>
           <div class="pg-item">
@@ -81,7 +81,7 @@
           </div>
           <div class="pg-item"><span class="pg-label">本月已用</span><strong>{{ formatPeriodCost(monthUsage) }}</strong></div>
           <div class="pg-item"><span class="pg-label">本月预估</span><strong>{{ formatPeriodCost(monthForecastUsage, true) }}</strong><span class="pg-hint">按当前速度推算</span></div>
-          <div class="pg-item"><span class="pg-label">{{ currentRangeCardLabel }}</span><strong>{{ formatPeriodCost({ cost: totalCost }) }}</strong></div>
+          <div class="pg-item"><span class="pg-label">{{ currentRangeCardLabel }}</span><strong>{{ formatPeriodCost(timelineTotals) }}</strong></div>
         </div>
       </div>
     </div>
@@ -133,7 +133,7 @@
     <div class="section chart-section">
       <div class="section-title">
         <el-icon><TrendCharts /></el-icon>
-        {{ chartRangeTitle }} Token / 成本趋势
+        {{ chartRangeTitle }} Token / API 等价费用趋势
         <span class="section-hint">{{ chartAggregationHint }} · {{ modelScopeHint }}</span>
         <div class="chart-compare">
           <span class="compare-item" :class="weeklyChangePercent >= 0 ? 'up' : 'down'">
@@ -256,8 +256,8 @@
             <strong>{{ formatTokenZhWithRaw(hoveredChartPoint.tokens) }}</strong>
           </div>
           <div v-if="chartMetric !== 'tokens'" class="tooltip-row cost-row">
-            <span>成本</span>
-            <strong>¥{{ hoveredChartPoint.cost.toFixed(4) }}</strong>
+            <span>API 等价费用</span>
+            <strong>{{ formatCostDetail(hoveredChartPoint.cost, hoveredChartPoint.priceStatus, hoveredChartPoint.billingMode) }}</strong>
           </div>
         </div>
         <div v-if="!chartLoading && !(costChartPoints.length > 1 || tokenChartPoints.length > 1)" class="chart-empty">暂无趋势数据</div>
@@ -316,31 +316,31 @@
             <span class="token-split-num" :title="formatTokenRaw(row.cacheTokens)">{{ formatTokenZh(row.cacheTokens) }}</span>
           </template>
         </el-table-column>
-        <el-table-column v-if="chartMetric === 'cost'" label="总成本" prop="cost" align="right" min-width="124">
+        <el-table-column v-if="chartMetric === 'cost'" label="API 等价总费用" prop="cost" align="right" min-width="150">
           <template #default="{ row }">
             <span :class="row.cost > 0 ? 'cost-num' : 'cost-zero'">
-              {{ formatCostDetail(row.cost) }}
+              {{ formatCostDetail(row.cost, row.priceStatus, row.billingMode) }}
             </span>
           </template>
         </el-table-column>
-        <el-table-column v-if="chartMetric === 'cost'" label="输入成本" prop="inputCost" align="right" min-width="124">
+        <el-table-column v-if="chartMetric === 'cost'" label="输入等价费用" prop="inputCost" align="right" min-width="134">
           <template #default="{ row }">
             <span :class="row.inputCost > 0 ? 'cost-num' : 'cost-zero'">
-              {{ formatCostDetail(row.inputCost) }}
+              {{ formatCostDetail(row.inputCost, row.priceStatus, row.billingMode) }}
             </span>
           </template>
         </el-table-column>
-        <el-table-column v-if="chartMetric === 'cost'" label="输出成本" prop="outputCost" align="right" min-width="124">
+        <el-table-column v-if="chartMetric === 'cost'" label="输出等价费用" prop="outputCost" align="right" min-width="134">
           <template #default="{ row }">
             <span :class="row.outputCost > 0 ? 'cost-num' : 'cost-zero'">
-              {{ formatCostDetail(row.outputCost) }}
+              {{ formatCostDetail(row.outputCost, row.priceStatus, row.billingMode) }}
             </span>
           </template>
         </el-table-column>
-        <el-table-column v-if="chartMetric === 'cost'" label="缓存成本" prop="cacheCost" align="right" min-width="124">
+        <el-table-column v-if="chartMetric === 'cost'" label="缓存等价费用" prop="cacheCost" align="right" min-width="134">
           <template #default="{ row }">
             <span :class="row.cacheCost > 0 ? 'cost-num' : 'cost-zero'">
-              {{ formatCostDetail(row.cacheCost) }}
+              {{ formatCostDetail(row.cacheCost, row.priceStatus, row.billingMode) }}
             </span>
           </template>
         </el-table-column>
@@ -354,10 +354,10 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column v-if="chartMetric === 'both'" label="成本" align="right" min-width="128">
+        <el-table-column v-if="chartMetric === 'both'" label="API 等价费用" align="right" min-width="150">
           <template #default="{ row }">
             <span :class="row.cost > 0 ? 'cost-num' : 'cost-zero'">
-              {{ formatCostDetail(row.cost) }}
+              {{ formatCostDetail(row.cost, row.priceStatus, row.billingMode) }}
             </span>
           </template>
         </el-table-column>
@@ -367,7 +367,7 @@
       <div class="total-row" data-testid="token-detail-total">
         <span class="total-label">合计</span>
         <span v-if="chartMetric !== 'cost'" class="total-tokens">{{ formatTokenZhWithRaw(totalTokens) }}</span>
-        <span v-if="chartMetric !== 'tokens'" class="total-cost">{{ totalCost > 0 ? '¥' + totalCost.toFixed(4) : '-' }}</span>
+        <span v-if="chartMetric !== 'tokens'" class="total-cost">{{ formatCostDetail(totalCost, timelineTotals.priceStatus, timelineTotals.billingMode) }}</span>
       </div>
     </div>
 
@@ -554,7 +554,7 @@
         </el-table-column>
         <el-table-column
           v-if="chartMetric !== 'tokens'"
-          label="总成本"
+          label="API 等价总费用"
           prop="cost"
           align="right"
           min-width="124"
@@ -563,13 +563,13 @@
         >
           <template #default="{ row }">
             <span :class="row.cost > 0 ? 'cost-num' : 'cost-zero'">
-              {{ formatCostDetail(row.cost) }}
+              {{ formatCostDetail(row.cost, row.priceStatus, row.billingMode) }}
             </span>
           </template>
         </el-table-column>
         <el-table-column
           v-if="chartMetric === 'cost'"
-          label="输入成本"
+          label="输入等价费用"
           prop="inputCost"
           align="right"
           min-width="124"
@@ -578,13 +578,13 @@
         >
           <template #default="{ row }">
             <span :class="row.inputCost > 0 ? 'cost-num' : 'cost-zero'">
-              {{ formatCostDetail(row.inputCost) }}
+              {{ formatCostDetail(row.inputCost, row.priceStatus, row.billingMode) }}
             </span>
           </template>
         </el-table-column>
         <el-table-column
           v-if="chartMetric === 'cost'"
-          label="输出成本"
+          label="输出等价费用"
           prop="outputCost"
           align="right"
           min-width="124"
@@ -593,13 +593,13 @@
         >
           <template #default="{ row }">
             <span :class="row.outputCost > 0 ? 'cost-num' : 'cost-zero'">
-              {{ formatCostDetail(row.outputCost) }}
+              {{ formatCostDetail(row.outputCost, row.priceStatus, row.billingMode) }}
             </span>
           </template>
         </el-table-column>
         <el-table-column
           v-if="chartMetric === 'cost'"
-          label="缓存成本"
+          label="缓存等价费用"
           prop="cacheCost"
           align="right"
           min-width="132"
@@ -608,7 +608,7 @@
         >
           <template #default="{ row }">
             <span :class="row.cacheCost > 0 ? 'cost-num' : 'cost-zero'">
-              {{ formatCostDetail(row.cacheCost) }}
+              {{ formatCostDetail(row.cacheCost, row.priceStatus, row.billingMode) }}
             </span>
           </template>
         </el-table-column>
@@ -673,6 +673,8 @@ interface UsageDatum {
   output?: number
   cacheRead?: number
   cacheWrite?: number
+  priceStatus?: 'configured' | 'partial' | 'unconfigured'
+  billingMode?: 'per_token' | 'free' | 'subscription_monthly' | 'use_default' | 'unconfigured' | 'mixed'
 }
 type ModelUsageMap = Record<string, UsageDatum>
 type AgentModelUsageMap = Record<string, ModelUsageMap>
@@ -680,6 +682,8 @@ interface TimelineDay {
   date: string
   tokens: number
   cost: number
+  priceStatus?: UsageDatum['priceStatus']
+  billingMode?: UsageDatum['billingMode']
   byModel?: ModelUsageMap
   byAgentByModel?: AgentModelUsageMap
 }
@@ -972,6 +976,8 @@ function cloneUsage(usage: Partial<UsageDatum> | undefined): UsageDatum {
     output: Number(usage?.output) || 0,
     cacheRead: Number(usage?.cacheRead) || 0,
     cacheWrite: Number(usage?.cacheWrite) || 0,
+    priceStatus: usage?.priceStatus,
+    billingMode: usage?.billingMode,
   }
 }
 
@@ -1045,7 +1051,16 @@ const filteredTimeline = computed<TimelineDay[]>(() => {
 const chartMaxCost = computed(() => Math.max(...filteredTimeline.value.map(d => d.cost), 0.0001))
 const chartMaxTokens = computed(() => Math.max(...filteredTimeline.value.map(d => d.tokens), 1))
 
-interface ChartPoint { x: number; y: number; date: string; tokens: number; cost: number; label: string }
+interface ChartPoint {
+  x: number
+  y: number
+  date: string
+  tokens: number
+  cost: number
+  label: string
+  priceStatus?: UsageDatum['priceStatus']
+  billingMode?: UsageDatum['billingMode']
+}
 
 function buildChartPoints(metric: 'cost' | 'tokens', maxValue: number): ChartPoint[] {
   if (filteredTimeline.value.length < 2) return []
@@ -1055,7 +1070,7 @@ function buildChartPoints(metric: 'cost' | 'tokens', maxValue: number): ChartPoi
   return filteredTimeline.value.map((d, i) => {
     const x = PAD_L.value + (i / (n - 1)) * plotW
     const y = PAD_T + plotH - ((d[metric] || 0) / maxValue) * plotH
-    return { x, y, date: d.date, tokens: d.tokens, cost: d.cost, label: formatChartLabel(d.date) }
+    return { x, y, date: d.date, tokens: d.tokens, cost: d.cost, label: formatChartLabel(d.date), priceStatus: d.priceStatus, billingMode: d.billingMode }
   })
 }
 
@@ -1096,6 +1111,8 @@ const hoveredChartPoint = computed(() => {
     ...basePoint,
     tokens: day.tokens,
     cost: day.cost,
+    priceStatus: day.priceStatus,
+    billingMode: day.billingMode,
     tokenY: tokenPoint.y,
     costY: costPoint.y,
   }
@@ -1198,6 +1215,9 @@ const MODEL_COLORS: Record<string, string> = safeRecordFrom({
   'gpt-4o-mini': '#5e5ce6',
   'gpt-5.5': '#0a84ff',
   'gpt-5.5-pro': '#0a84ff',
+  'gpt-5.6-sol': '#0a84ff',
+  'gpt-5.6-terra': '#5e5ce6',
+  'gpt-5.6-luna': '#64d2ff',
 })
 const FALLBACK_COLORS = ['#bf5af2', '#ff375f', '#06b6d4', '#84cc16', '#ff9f0a']
 let colorIdx = 0
@@ -1239,6 +1259,9 @@ const MODEL_DISPLAY: Record<string, string> = safeRecordFrom({
   'gpt-5.4-pro': 'GPT-5.4 Pro',
   'gpt-5.5': 'GPT-5.5',
   'gpt-5.5-pro': 'GPT-5.5 Pro',
+  'gpt-5.6-sol': 'GPT-5.6 Sol',
+  'gpt-5.6-terra': 'GPT-5.6 Terra',
+  'gpt-5.6-luna': 'GPT-5.6 Luna',
   'gpt-4o': 'GPT-4o',
   'gpt-4o-mini': 'GPT-4o Mini',
   'Qwen3.5-4B-OptiQ-4bit': '本地 Qwen3.5 4B',
@@ -1354,6 +1377,16 @@ function addUsage(target: UsageDatum, usage: Partial<UsageDatum> | undefined) {
   target.output = (Number(target.output) || 0) + (Number(usage.output) || 0)
   target.cacheRead = (Number(target.cacheRead) || 0) + (Number(usage.cacheRead) || 0)
   target.cacheWrite = (Number(target.cacheWrite) || 0) + (Number(usage.cacheWrite) || 0)
+  if (usage.priceStatus) {
+    target.priceStatus = !target.priceStatus || target.priceStatus === usage.priceStatus
+      ? usage.priceStatus
+      : 'partial'
+  }
+  if (usage.billingMode) {
+    target.billingMode = !target.billingMode || target.billingMode === usage.billingMode
+      ? usage.billingMode
+      : 'mixed'
+  }
 }
 
 function addUsageToMap(map: ModelUsageMap, key: string, usage: Partial<UsageDatum> | undefined) {
@@ -1376,7 +1409,10 @@ function splitCostByTokenParts(usage: Partial<UsageDatum>): { inputCost: number;
   }
 }
 
-function formatCostDetail(value: number): string {
+function formatCostDetail(value: number, priceStatus?: UsageDatum['priceStatus'], billingMode?: UsageDatum['billingMode']): string {
+  if (priceStatus === 'unconfigured') return '价格未配置'
+  if (priceStatus === 'partial') return `部分未配置 · ${value > 0 ? `¥${value.toFixed(4)}` : '¥0'}`
+  if (billingMode === 'free') return '¥0（免费）'
   return value > 0 ? `¥${value.toFixed(4)}` : '-'
 }
 
@@ -1422,7 +1458,7 @@ const rangeByAgentByModel = computed<AgentModelUsageMap>(() => {
 const totalTokens = computed(() => timelineTotals.value.tokens)
 const totalCost = computed(() => timelineTotals.value.cost)
 const activeMetricProp = computed<'tokens' | 'cost'>(() => chartMetric.value === 'cost' ? 'cost' : 'tokens')
-const metricLabel = computed(() => chartMetric.value === 'cost' ? '成本' : 'Token')
+const metricLabel = computed(() => chartMetric.value === 'cost' ? 'API 等价费用' : 'Token')
 
 function startOfLocalDay(date: Date): Date { const n = new Date(date); n.setHours(0,0,0,0); return n }
 function addDays(date: Date, days: number): Date { const n = new Date(date); n.setDate(n.getDate()+days); return n }
@@ -1504,8 +1540,11 @@ function sumUsageRows(rows: Array<Partial<UsageDatum>>): UsageDatum {
 }
 
 function formatPeriodCost(usage: Partial<UsageDatum>, forecast = false): string {
+  if (usage.priceStatus === 'unconfigured') return '价格未配置'
   const cost = Number(usage.cost) || 0
-  return cost > 0 ? `¥${forecast ? cost.toFixed(0) : cost.toFixed(2)}` : '¥0'
+  if (usage.billingMode === 'free') return '¥0（免费）'
+  const text = cost > 0 ? `¥${forecast ? cost.toFixed(0) : cost.toFixed(2)}` : '¥0'
+  return usage.priceStatus === 'partial' ? `部分未配置 · ${text}` : text
 }
 
 const todayUsage = computed(() => {
@@ -1543,7 +1582,7 @@ const monthForecastUsage = computed(() => {
 
 const currentRangeCardLabel = computed(() => `${chartRangeTitle.value}合计`)
 const tableScopeHint = computed(() => {
-  const metric = chartMetric.value === 'both' ? 'Token + 成本' : metricLabel.value
+  const metric = chartMetric.value === 'both' ? 'Token + API 等价费用' : metricLabel.value
   return `${chartRangeTitle.value} · ${metric} · ${modelScopeHint.value}`
 })
 
@@ -1569,6 +1608,8 @@ const modelRows = computed(() => {
         displayName: getModelDisplayName(model),
         tokens: data.tokens,
         cost: data.cost,
+      priceStatus: data.priceStatus,
+      billingMode: data.billingMode,
         input: Number(data.input) || 0,
         output: Number(data.output) || 0,
         cacheTokens: (Number(data.cacheRead) || 0) + (Number(data.cacheWrite) || 0),
@@ -1597,6 +1638,8 @@ const agentModelRows = computed(() => {
     inputCost: number
     outputCost: number
     cacheCost: number
+    priceStatus?: UsageDatum['priceStatus']
+    billingMode?: UsageDatum['billingMode']
   }> = []
   for (const [agentId, modelMap] of Object.entries(byAgentByModel)) {
     if (!modelMap) continue
@@ -1609,6 +1652,8 @@ const agentModelRows = computed(() => {
         model,
         tokens: data.tokens,
         cost: data.cost,
+        priceStatus: data.priceStatus,
+        billingMode: data.billingMode,
         input: Number(data.input) || 0,
         output: Number(data.output) || 0,
         cacheTokens: (Number(data.cacheRead) || 0) + (Number(data.cacheWrite) || 0),

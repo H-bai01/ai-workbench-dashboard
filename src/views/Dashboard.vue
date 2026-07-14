@@ -161,7 +161,7 @@
               :class="{ active: tokenMiniMetricKeys.includes('cost') }"
               type="button"
               @click="toggleTokenMiniMetric('cost')"
-            >金额</button>
+            >API 等价费用</button>
           </div>
           <button
             v-if="hasTokenMiniModelFilter"
@@ -192,14 +192,14 @@
           </div>
           <div class="token-kpi-row">
             <div>
-              <span>当前美金</span>
+              <span>API 等价美元</span>
               <strong
                 :title="`按 1 USD = ¥${USD_TO_CNY_RATE} 估算`"
                 :style="{ color: tokenMiniMetric === 'cost' || tokenMiniMetric === 'both' ? COST_METRIC_COLOR : undefined }"
               >{{ scopedUsdText }}</strong>
             </div>
             <div>
-              <span>当前人民币</span>
+              <span>API 等价人民币</span>
               <strong :style="{ color: tokenMiniMetric === 'cost' || tokenMiniMetric === 'both' ? COST_METRIC_COLOR : undefined }">{{ scopedCostText }}</strong>
             </div>
             <div>
@@ -228,7 +228,7 @@
                   :class="{ active: tokenMiniMetricKeys.includes('cost') }"
                   type="button"
                   @click="toggleTokenMiniMetric('cost')"
-                >金额</button>
+                >API 等价费用</button>
               </div>
             </div>
             <div class="token-mini-plot" ref="tokenMiniPlotEl" v-if="tokenMiniChartPoints.length > 0">
@@ -1360,6 +1360,8 @@ interface UsageDatum {
   output?: number
   cacheRead?: number
   cacheWrite?: number
+  priceStatus?: 'configured' | 'partial' | 'unconfigured'
+  billingMode?: 'per_token' | 'free' | 'subscription_monthly' | 'use_default' | 'unconfigured' | 'mixed'
 }
 type PulseAppId = 'openclaw' | 'codex' | 'claude-code'
 interface LocalAiUsageItem {
@@ -1432,6 +1434,8 @@ interface TimelineDay {
   date: string
   tokens: number
   cost: number
+  priceStatus?: UsageDatum['priceStatus']
+  billingMode?: UsageDatum['billingMode']
   byModel?: ModelUsageMap
   byAgentByModel?: Record<string, ModelUsageMap>
 }
@@ -1463,6 +1467,9 @@ const MODEL_COLOR_MAP: Record<string, string> = safeRecordFrom({
   'gpt-5.4-nano': '#ffd60a',
   'gpt-5.5': '#ff9f0a',
   'gpt-5.5-pro': '#ff9f0a',
+  'gpt-5.6-sol': '#ff9f0a',
+  'gpt-5.6-terra': '#ffb340',
+  'gpt-5.6-luna': '#ffd60a',
   'claude-fable-5': '#cf7ef5',
   'claude-opus-4-8': '#cf7ef5',
   'claude-sonnet-5': '#cf7ef5',
@@ -1686,6 +1693,9 @@ function getModelDisplayLabel(model: string): string {
     'gpt-4o-mini': 'GPT-4o Mini',
     'gpt-5.5': 'GPT-5.5',
     'gpt-5.5-pro': 'GPT-5.5 Pro',
+    'gpt-5.6-sol': 'GPT-5.6 Sol',
+    'gpt-5.6-terra': 'GPT-5.6 Terra',
+    'gpt-5.6-luna': 'GPT-5.6 Luna',
     'Qwen3.5-4B-OptiQ-4bit': '本地 Qwen3.5 4B',
     'qwen3.5': '本地 Qwen3.5',
     'qwen3.5:9b': '本地 Qwen3.5 9B',
@@ -1943,6 +1953,8 @@ function cloneUsage(usage: Partial<UsageDatum> | undefined): UsageDatum {
     output: Number(usage?.output) || 0,
     cacheRead: Number(usage?.cacheRead) || 0,
     cacheWrite: Number(usage?.cacheWrite) || 0,
+    priceStatus: usage?.priceStatus,
+    billingMode: usage?.billingMode,
   }
 }
 
@@ -1958,20 +1970,41 @@ function addUsage(target: UsageDatum, usage: Partial<UsageDatum> | undefined): v
   target.output = (Number(target.output) || 0) + (Number(usage.output) || 0)
   target.cacheRead = (Number(target.cacheRead) || 0) + (Number(usage.cacheRead) || 0)
   target.cacheWrite = (Number(target.cacheWrite) || 0) + (Number(usage.cacheWrite) || 0)
+  if (usage.priceStatus) {
+    target.priceStatus = !target.priceStatus || target.priceStatus === usage.priceStatus
+      ? usage.priceStatus
+      : 'partial'
+  }
+  if (usage.billingMode) {
+    target.billingMode = !target.billingMode || target.billingMode === usage.billingMode
+      ? usage.billingMode
+      : 'mixed'
+  }
 }
 
 function usageMetricValue(usage: UsageDatum): number {
   return tokenMiniMetric.value === 'cost' ? usage.cost : usage.tokens
 }
 
-function formatCostScope(cost: number): string {
+function formatCostScope(cost: number, priceStatus?: UsageDatum['priceStatus'], billingMode?: UsageDatum['billingMode']): string {
+  if (priceStatus === 'unconfigured') return '价格未配置'
+  if (priceStatus === 'partial') {
+    const configuredCost = cost > 0 ? (cost < 0.01 ? '<¥0.01' : `¥${cost.toFixed(2)}`) : '¥0'
+    return `部分价格未配置 · ${configuredCost}`
+  }
+  if (billingMode === 'free') return '¥0（免费）'
   if (!cost || cost <= 0) return '¥0'
   if (cost < 0.01) return '<¥0.01'
   return `¥${cost.toFixed(2)}`
 }
 
-function formatUsdScope(costCny: number): string {
+function formatUsdScope(costCny: number, priceStatus?: UsageDatum['priceStatus']): string {
+  if (priceStatus === 'unconfigured') return '价格未配置'
   const costUsd = (Number(costCny) || 0) / USD_TO_CNY_RATE
+  if (priceStatus === 'partial') {
+    const configuredCost = costUsd > 0 ? (costUsd < 0.01 ? '<$0.01' : `$${costUsd.toFixed(2)}`) : '$0'
+    return `部分未配置 · ${configuredCost}`
+  }
   if (!costUsd || costUsd <= 0) return '$0'
   if (costUsd < 0.01) return '<$0.01'
   return `$${costUsd.toFixed(2)}`
@@ -1990,7 +2023,7 @@ function formatTokenMiniChartCost(value: number): string {
 }
 
 function formatUsageByMetric(usage: UsageDatum): string {
-  return tokenMiniMetric.value === 'cost' ? formatCostScope(usage.cost) : formatTokenZh(usage.tokens)
+  return tokenMiniMetric.value === 'cost' ? formatCostScope(usage.cost, usage.priceStatus, usage.billingMode) : formatTokenZh(usage.tokens)
 }
 
 function addUsageToMap(map: ModelUsageMap, model: string, usage: Partial<UsageDatum> | undefined): void {
@@ -2111,8 +2144,8 @@ interface TokenMiniPoint {
 }
 
 const tokenMiniMetricLabel = computed(() => {
-  if (tokenMiniMetric.value === 'both') return 'Token + 金额'
-  return tokenMiniMetric.value === 'tokens' ? 'Token' : '金额'
+  if (tokenMiniMetric.value === 'both') return 'Token + API 等价费用'
+  return tokenMiniMetric.value === 'tokens' ? 'Token' : 'API 等价费用'
 })
 const tokenMiniRangeLabel = computed(() => {
   if (tokenMiniRange.value === 'custom') {
@@ -2121,7 +2154,7 @@ const tokenMiniRangeLabel = computed(() => {
   }
   return TOKEN_MINI_RANGES.find((opt) => opt.value === tokenMiniRange.value)?.label || '全部'
 })
-const contributionEyebrow = computed(() => tokenMiniMetric.value === 'cost' ? '费用排行' : '贡献排行')
+const contributionEyebrow = computed(() => tokenMiniMetric.value === 'cost' ? 'API 等价费用排行' : '贡献排行')
 const contributionTitle = computed(() => tokenMiniMetric.value === 'cost' ? '谁最能花钱' : '谁最能干')
 const contributionEmptyText = computed(() => tokenMiniMetric.value === 'cost' ? '暂无费用贡献数据' : '暂无 Token 贡献数据')
 const contributionBarColor = computed(() => (
@@ -2171,7 +2204,7 @@ function tokenMiniColorForMetric(metric: TokenMiniSeriesKey): string {
 }
 
 function tokenMiniLabelForMetric(metric: TokenMiniSeriesKey): string {
-  return metric === 'cost' ? '金额' : 'Token'
+  return metric === 'cost' ? 'API 等价费用' : 'Token'
 }
 
 function formatTokenMiniPointValue(metric: TokenMiniSeriesKey, point: TokenMiniPoint): string {
@@ -2437,8 +2470,8 @@ const scopedUsageTotals = computed<UsageDatum>(() => {
   }
 })
 
-const scopedCostText = computed(() => formatCostScope(scopedUsageTotals.value.cost))
-const scopedUsdText = computed(() => formatUsdScope(scopedUsageTotals.value.cost))
+const scopedCostText = computed(() => formatCostScope(scopedUsageTotals.value.cost, scopedUsageTotals.value.priceStatus, scopedUsageTotals.value.billingMode))
+const scopedUsdText = computed(() => formatUsdScope(scopedUsageTotals.value.cost, scopedUsageTotals.value.priceStatus))
 const scopedTokenText = computed(() => formatTokenZh(scopedUsageTotals.value.tokens))
 
 const scopedAgentUsageMap = computed<Record<string, UsageDatum>>(() => {
@@ -2484,8 +2517,9 @@ function getAgentScopedUsage(agent: AgentInfo): UsageDatum {
 }
 
 function usageMetricText(usage: UsageDatum): string {
+  if (tokenMiniMetric.value === 'cost') return formatCostScope(usage.cost, usage.priceStatus, usage.billingMode)
   const value = usageMetricValue(usage)
-  if (value <= 0) return tokenMiniMetric.value === 'cost' ? '¥0' : '0'
+  if (value <= 0) return '0'
   return formatUsageByMetric(usage)
 }
 
@@ -2508,7 +2542,7 @@ const agentPulseRows = computed<PulseRow[]>(() => {
         usage,
         usageValue,
         tokenText: formatTokenZh(usage.tokens),
-        costText: formatCostScope(usage.cost),
+        costText: formatCostScope(usage.cost, usage.priceStatus, usage.billingMode),
         metricText: usageMetricText(usage),
       }
     })
@@ -2646,7 +2680,7 @@ function localAppRows(app: LocalAiUsageApp | undefined, appId: PulseAppId): Puls
       usage,
       usageValue,
       tokenText: formatTokenZh(usage.tokens),
-      costText: formatCostScope(usage.cost),
+      costText: formatCostScope(usage.cost, usage.priceStatus, usage.billingMode),
       metricText: usageMetricText(usage),
     }
   }).sort((a, b) => b.usageValue - a.usageValue || a.name.localeCompare(b.name, 'zh-CN'))
@@ -2945,7 +2979,7 @@ const contributionRows = computed(() => {
         usage,
         usageValue,
         tokenText: formatTokenZh(usage.tokens),
-        costText: formatCostScope(usage.cost),
+        costText: formatCostScope(usage.cost, usage.priceStatus, usage.billingMode),
         metricText: formatUsageByMetric(usage),
       }
     })
@@ -2994,8 +3028,8 @@ const modelShareRows = computed(() => {
       model,
       label: getModelDisplayLabel(model),
       tokenText: formatTokenZh(data.tokens),
-      costText: formatCostScope(data.cost),
-      metricText: metric === 'cost' ? formatCostScope(data.cost) : formatTokenZh(data.tokens),
+      costText: formatCostScope(data.cost, data.priceStatus, data.billingMode),
+      metricText: metric === 'cost' ? formatCostScope(data.cost, data.priceStatus, data.billingMode) : formatTokenZh(data.tokens),
       pct: Math.round(((Number(data[metric]) || 0) / total) * 100),
       color: getModelColor(model, index),
     }))

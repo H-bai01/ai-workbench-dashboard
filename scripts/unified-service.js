@@ -81,6 +81,7 @@ import {
   readCodexProcesses,
 } from './local-ai-status.mjs'
 import { createSessionObservationStore } from './session-observation.mjs'
+import { GPT56_BILLING_MODELS, mergeBillingConfigWithDefaults, mergePriceStatus } from './billing-config.mjs'
 import { installPrivacyConsole, installProcessErrorPrivacy } from '../src/utils/log-privacy.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -2574,7 +2575,7 @@ function getBillingDiscountFactor(cfg = {}, timeMs = Date.now()) {
   return inWindow ? Number(cfg.discountFactor) || 0 : 1
 }
 
-function resolveBillingConfig(modelId, billingConfig) {
+export function resolveBillingConfig(modelId, billingConfig) {
   const normalized = normalizeModelId(modelId)
   const models = billingConfig?.models || {}
   if (models[normalized]) return models[normalized]
@@ -2598,7 +2599,7 @@ function resolveBillingConfig(modelId, billingConfig) {
   return billingConfig?.fallback
 }
 
-function calculateUsageCostWithBilling(modelId, usage, rawCost, billingConfig, timeMs = Date.now()) {
+export function calculateUsageCostWithBilling(modelId, usage, rawCost, billingConfig, timeMs = Date.now()) {
   const cfg = resolveBillingConfig(modelId, billingConfig)
   if (!cfg) return rawCost || 0
 
@@ -2627,7 +2628,7 @@ function calculateUsageCostWithBilling(modelId, usage, rawCost, billingConfig, t
   ) * factor
 }
 
-function observationPriceConfigured(modelId, usage, billingConfig) {
+export function observationPriceConfigured(modelId, usage, billingConfig) {
   if ((Number(usage?.rawCost) || 0) > 0) return true
   const cfg = resolveBillingConfig(modelId, billingConfig)
   if (!cfg || cfg === billingConfig?.fallback) return false
@@ -2644,9 +2645,10 @@ function observationPriceConfigured(modelId, usage, billingConfig) {
 function enrichObservationUsage(summary, billingConfig, timeMs = Date.now()) {
   const byModel = (summary?.byModel || []).map((row) => {
     const usage = row.usage || {}
+    const billingMode = resolveBillingConfig(row.model, billingConfig)?.mode || 'unconfigured'
     const priceConfigured = observationPriceConfigured(row.model, usage, billingConfig)
     const cost = calculateUsageCostWithBilling(row.model, usage, usage.rawCost, billingConfig, timeMs)
-    return { ...row, usage: { ...usage, cost }, priceConfigured }
+    return { ...row, usage: { ...usage, cost, billingMode }, priceConfigured }
   })
   const usage = byModel.reduce((total, row) => {
     addUsageTotals(total, row.usage)
@@ -2661,9 +2663,10 @@ function enrichObservationUsage(summary, billingConfig, timeMs = Date.now()) {
 
 function enrichObservationEvent(event, billingConfig) {
   if (!event?.usage) return event
+  const billingMode = resolveBillingConfig(event.model, billingConfig)?.mode || 'unconfigured'
   const priceConfigured = observationPriceConfigured(event.model, event.usage, billingConfig)
   const cost = calculateUsageCostWithBilling(event.model, event.usage, event.usage.rawCost, billingConfig, event.at || Date.now())
-  return { ...event, usage: { ...event.usage, cost }, priceConfigured }
+  return { ...event, usage: { ...event.usage, cost, billingMode }, priceConfigured }
 }
 
 function addUsageTotals(target, usage) {
@@ -2674,6 +2677,12 @@ function addUsageTotals(target, usage) {
   target.output += Number(usage.output) || 0
   target.cacheRead += Number(usage.cacheRead) || 0
   target.cacheWrite += Number(usage.cacheWrite) || 0
+  target.priceStatus = mergePriceStatus(target.priceStatus, usage.priceStatus)
+  if (usage.billingMode) {
+    target.billingMode = !target.billingMode || target.billingMode === usage.billingMode
+      ? usage.billingMode
+      : 'mixed'
+  }
   return target
 }
 
@@ -2961,6 +2970,8 @@ function localUsagePathExists(value) {
 function addLocalUsage(app, item, modelId, rawUsage, billingConfig, timeMs, range = {}) {
   const model = normalizeModelId(modelId || item.model || 'unknown')
   const usage = { ...rawUsage }
+  usage.billingMode = resolveBillingConfig(model, billingConfig)?.mode || 'unconfigured'
+  usage.priceStatus = observationPriceConfigured(model, usage, billingConfig) ? 'configured' : 'unconfigured'
   usage.cost = calculateUsageCostWithBilling(model, usage, usage.cost, billingConfig, timeMs)
 
   addUsageTotals(app.usage, usage)
@@ -4190,7 +4201,7 @@ async function enrichSkillsWithInfo(skills, maxConcurrent = 10) {
 // HTTP Server
 // ============================================
 
-const server = http.createServer(async (req, res) => {
+export const server = http.createServer(async (req, res) => {
   const contextDecision = validateRequestContext(req, LOCAL_REQUEST_POLICY)
   if (!contextDecision.ok) {
     sendBoundaryError(res, contextDecision)
@@ -6385,6 +6396,7 @@ const server = http.createServer(async (req, res) => {
   const BILLING_DEFAULTS = {
     version: 1,
     models: {
+      ...GPT56_BILLING_MODELS,
       'MiniMax-M2.7': {
         mode: 'per_token',
         inputPriceCNYPerMillion: 2.16,
@@ -6663,14 +6675,17 @@ const server = http.createServer(async (req, res) => {
     },
   }
 
-  const readObservationBillingConfig = () => {
+  const readEffectiveBillingConfig = () => {
+    let savedConfig = null
     try {
       if (fsSync.existsSync(BILLING_CONFIG_PATH)) {
-        return JSON.parse(fsSync.readFileSync(BILLING_CONFIG_PATH, 'utf8'))
+        savedConfig = JSON.parse(fsSync.readFileSync(BILLING_CONFIG_PATH, 'utf8'))
       }
     } catch { /* use reviewed defaults */ }
-    return BILLING_DEFAULTS
+    return mergeBillingConfigWithDefaults(BILLING_DEFAULTS, savedConfig)
   }
+
+  const readObservationBillingConfig = readEffectiveBillingConfig
 
   // ============================================
   // 阶段 3A：统一只读会话执行详情
@@ -6749,16 +6764,8 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === '/api/billing-config' && req.method === 'GET') {
     try {
-      if (fsSync.existsSync(BILLING_CONFIG_PATH)) {
-        const raw = fsSync.readFileSync(BILLING_CONFIG_PATH, 'utf-8')
-        const cfg = JSON.parse(raw)
-        res.writeHead(200, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify(cfg))
-      } else {
-        // 文件不存在 → 返回内置默认
-        res.writeHead(200, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify(BILLING_DEFAULTS))
-      }
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify(readEffectiveBillingConfig()))
     } catch (e) {
       console.error('[billing-config GET] error:', e.message)
       res.writeHead(500, { 'Content-Type': 'application/json' })
@@ -6809,12 +6816,7 @@ const server = http.createServer(async (req, res) => {
   // ============================================
   if (pathname === '/api/local-ai-usage' && req.method === 'GET') {
     try {
-      let billingConfig = BILLING_DEFAULTS
-      try {
-        if (fsSync.existsSync(BILLING_CONFIG_PATH)) {
-          billingConfig = JSON.parse(fsSync.readFileSync(BILLING_CONFIG_PATH, 'utf-8'))
-        }
-      } catch { /* 使用内置默认 */ }
+      const billingConfig = readEffectiveBillingConfig()
 
       const range = buildLocalUsageRange(url.searchParams)
       const result = await collectLocalAiUsage(range, billingConfig)
@@ -6896,12 +6898,7 @@ const server = http.createServer(async (req, res) => {
       const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
       const dayOfMonth = today.getDate()
 
-      let billingConfig = BILLING_DEFAULTS
-      try {
-        if (fsSync.existsSync(BILLING_CONFIG_PATH)) {
-          billingConfig = JSON.parse(fsSync.readFileSync(BILLING_CONFIG_PATH, 'utf-8'))
-        }
-      } catch { /* 使用内置默认 */ }
+      const billingConfig = readEffectiveBillingConfig()
 
       let todayCost = 0
       let monthCost = 0
@@ -7421,18 +7418,15 @@ const server = http.createServer(async (req, res) => {
         return buckets[dateKey]
       }
       const shouldTrackBucket = (bucketKey) => allRange || Boolean(buckets[bucketKey])
-      let billingConfig = BILLING_DEFAULTS
-      try {
-        if (fsSync.existsSync(BILLING_CONFIG_PATH)) {
-          billingConfig = JSON.parse(fsSync.readFileSync(BILLING_CONFIG_PATH, 'utf8'))
-        }
-      } catch { /* 使用内置默认 */ }
+      const billingConfig = readEffectiveBillingConfig()
 
       const addBucketUsage = (bucket, agentId, modelId, usage, usageTimeMs = Date.now()) => {
         const usageTotals = extractUsageTotals(usage || {})
         if (!hasUsageValue(usageTotals)) return
 
         const model = normalizeModelId(modelId)
+        usageTotals.billingMode = resolveBillingConfig(model, billingConfig)?.mode || 'unconfigured'
+        usageTotals.priceStatus = observationPriceConfigured(model, usageTotals, billingConfig) ? 'configured' : 'unconfigured'
         usageTotals.cost = calculateUsageCostWithBilling(model, usageTotals, usageTotals.cost, billingConfig, usageTimeMs)
 
         addUsageTotals(bucket, usageTotals)
