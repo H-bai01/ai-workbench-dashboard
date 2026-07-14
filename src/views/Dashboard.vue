@@ -121,8 +121,6 @@
     <section
       class="cockpit-section"
       :style="{ order: pageModuleOrder('cockpit') }"
-      v-loading="tokenUsageSnapshotBlocking"
-      element-loading-text="正在汇总完整统计…"
     >
       <div class="scope-toolbar">
         <div class="scope-toolbar-main scope-toolbar-panel">
@@ -180,7 +178,11 @@
         <span>{{ tokenUsageSnapshotError }}</span>
         <button type="button" @click="refreshTokenUsageSnapshot({ blocking: true })">重新加载</button>
       </div>
-      <div class="cockpit-inner">
+      <div
+        class="cockpit-inner"
+        v-loading="tokenUsageSnapshotBlocking"
+        element-loading-text="正在汇总完整统计…"
+      >
         <article
           class="cockpit-card token-cockpit-card"
           :class="{

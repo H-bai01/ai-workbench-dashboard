@@ -26,6 +26,10 @@ let trackerRequests
 let localUsageRequestStarted = false
 let releaseInitialLocalUsage
 let initialLocalUsageGate
+let snapshotScenario = 'default'
+let delayedMonthRequests = 0
+let releaseDelayedMonth
+let delayedMonthGate
 
 let configuredAgents
 
@@ -75,6 +79,42 @@ function timelineFixture() {
   byModel['generic-model'] = usage(5)
   byAgentByModel['external-agent'] = Object.assign(Object.create(null), { 'generic-model': usage(5) })
   return [{ date: '2026-07-11', ...usage(38), byModel, byAgentByModel }]
+}
+
+function localDateKey(date = new Date()) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function snapshotTimeline(tokens) {
+  return [{ date: localDateKey(), ...usage(tokens), byModel: {}, byAgentByModel: {} }]
+}
+
+function localUsageBody(tokens) {
+  const codexTokens = Math.floor(tokens * 0.4)
+  const claudeTokens = tokens - codexTokens
+  return {
+    ok: true,
+    apps: [
+      {
+        id: 'codex',
+        name: 'Codex',
+        itemLabel: '项目',
+        usage: usage(codexTokens),
+        items: [{ id: 'codex-fixture', name: 'Codex fixture', type: 'session', project: '/tmp/codex-fixture', usage: usage(codexTokens) }],
+      },
+      {
+        id: 'claude-code',
+        name: 'Claude Code',
+        itemLabel: '项目',
+        usage: usage(claudeTokens),
+        items: [{ id: 'claude-fixture', name: 'Claude fixture', type: 'session', project: '/tmp/claude-fixture', usage: usage(claudeTokens) }],
+      },
+    ],
+    timeline: snapshotTimeline(tokens),
+  }
 }
 
 before(async () => {
@@ -141,6 +181,7 @@ before(async () => {
     if (response.status() >= 400) failedResponses.push(`${response.status()} ${response.url()}`)
   })
   const localTimeline = timelineFixture()
+  delayedMonthGate = new Promise(resolve => { releaseDelayedMonth = resolve })
   await page.route('**/gateway-api/**', async (route) => {
     const url = new URL(route.request().url())
     if (url.pathname === '/gateway-api/health') {
@@ -170,6 +211,8 @@ before(async () => {
       await route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1X1 })
       return
     }
+    let status = 200
+    let allowAbortedRoute = false
     let body = { ok: true }
     if (url.pathname === '/api/public-config') body = { ok: true, config: {} }
     else if (url.pathname === '/api/health') body = { ok: true, uptimeMs: 1000, startedAt: new Date(Date.now() - 1000).toISOString() }
@@ -243,18 +286,59 @@ before(async () => {
     } else if (url.pathname === '/api/local-ai-usage') {
       localUsageRequestStarted = true
       await initialLocalUsageGate
-      body = {
-        ok: true,
-        apps: [
-          { id: 'codex', name: 'Codex', items: reservedKeys.map((id, index) => ({ id, name: id, project: `/tmp/codex/${id}`, ...usage(20 + index) })) },
-          { id: 'claude-code', name: 'Claude Code', items: reservedKeys.map((id, index) => ({ id, name: id, project: `/tmp/claude/${id}`, ...usage(30 + index) })) },
-        ],
-        timeline: localTimeline,
-      }
-    } else if (url.pathname === '/api/cost-timeline') body = { ok: true, timeline: localTimeline }
+      const isToday = url.searchParams.get('granularity') === 'hour'
+      if (snapshotScenario === 'race' && !isToday) {
+        allowAbortedRoute = true
+        delayedMonthRequests += 1
+        await delayedMonthGate
+        body = localUsageBody(222)
+      } else if (snapshotScenario === 'race' && isToday) body = localUsageBody(300)
+      else if (snapshotScenario === 'failure') {
+        status = 500
+        body = { ok: false, error: 'synthetic_failure' }
+      } else if (snapshotScenario === 'retry') body = localUsageBody(1200)
+      else if (snapshotScenario === 'reserved') {
+        body = {
+          ok: true,
+          apps: [
+            {
+              id: 'codex',
+              name: 'Codex',
+              itemLabel: '项目',
+              usage: usage(63),
+              items: reservedKeys.map((id, index) => ({ id, name: id, type: 'session', project: `/tmp/codex/${id}`, usage: usage(20 + index) })),
+            },
+            {
+              id: 'claude-code',
+              name: 'Claude Code',
+              itemLabel: '项目',
+              usage: usage(93),
+              items: reservedKeys.map((id, index) => ({ id, name: id, type: 'session', project: `/tmp/claude/${id}`, usage: usage(30 + index) })),
+            },
+          ],
+          timeline: localTimeline,
+        }
+      } else body = localUsageBody(500)
+    } else if (url.pathname === '/api/cost-timeline') {
+      const isToday = url.searchParams.get('granularity') === 'hour'
+      if (snapshotScenario === 'race' && !isToday) {
+        allowAbortedRoute = true
+        delayedMonthRequests += 1
+        await delayedMonthGate
+        body = { ok: true, timeline: snapshotTimeline(111) }
+      } else if (snapshotScenario === 'race' && isToday) body = { ok: true, timeline: snapshotTimeline(700) }
+      else if (snapshotScenario === 'failure') body = { ok: true, timeline: snapshotTimeline(7000) }
+      else if (snapshotScenario === 'retry') body = { ok: true, timeline: snapshotTimeline(800) }
+      else if (snapshotScenario === 'reserved') body = { ok: true, timeline: localTimeline }
+      else body = { ok: true, timeline: snapshotTimeline(100) }
+    }
     else if (url.pathname === '/api/agent-ui-status' || url.pathname === '/api/agent-running-status') body = { ok: true, agents: [] }
     else if (url.pathname === '/api/local-ai-status') body = { ok: true, statuses: [] }
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
+    try {
+      await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
+    } catch (error) {
+      if (!allowAbortedRoute) throw error
+    }
   })
   await page.goto(`http://127.0.0.1:${frontendPort}/`, { waitUntil: 'domcontentloaded' })
   try {
@@ -272,7 +356,7 @@ after(async () => {
 })
 
 test('首页等待 OpenClaw 与本地用量都完成后才发布完整统计快照', async () => {
-  const snapshotMask = page.locator('.cockpit-section > .el-loading-mask')
+  const snapshotMask = page.locator('.cockpit-inner > .el-loading-mask')
   try {
     const deadline = Date.now() + 5000
     while (!localUsageRequestStarted && Date.now() < deadline) {
@@ -290,9 +374,52 @@ test('首页等待 OpenClaw 与本地用量都完成后才发布完整统计快�
   const kpiText = await page.locator('.token-kpi-row').innerText()
   assert.doesNotMatch(kpiText, /—/)
   assert.match(kpiText, /当前 Token/)
+  assert.match(kpiText, /当前 Token\s*600/)
+  assert.match(await page.locator('.agent-pulse-app-tab').filter({ hasText: /Codex/ }).innerText(), /200/)
+  assert.match(await page.locator('.agent-pulse-app-tab').filter({ hasText: /Claude Code/ }).innerText(), /300/)
+})
+
+test('快速切换时间范围后迟到的旧请求不能覆盖最新完整快照', async () => {
+  snapshotScenario = 'race'
+  delayedMonthRequests = 0
+  try {
+    await page.locator('.token-mini-ranges .token-mini-chip').filter({ hasText: /^本月$/ }).click()
+    const deadline = Date.now() + 5000
+    while (delayedMonthRequests < 2 && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 20))
+    }
+    assert.equal(delayedMonthRequests, 2)
+
+    await page.locator('.token-mini-ranges .token-mini-chip').filter({ hasText: /^今天$/ }).click()
+    await page.locator('.cockpit-inner > .el-loading-mask').waitFor({ state: 'hidden' })
+    assert.match(await page.locator('.token-kpi-row').innerText(), /当前 Token\s*1,000/)
+  } finally {
+    releaseDelayedMonth()
+  }
+
+  await page.waitForTimeout(250)
+  assert.equal(await page.locator('.token-mini-ranges .token-mini-chip.active').innerText(), '今天')
+  assert.match(await page.locator('.token-kpi-row').innerText(), /当前 Token\s*1,000/)
+})
+
+test('刷新失败保留上一份完整快照并可重试为新的完整结果', async () => {
+  snapshotScenario = 'failure'
+  await page.locator('.token-mini-ranges .token-mini-chip').filter({ hasText: /^7 天$/ }).click()
+  await page.locator('.cockpit-inner > .el-loading-mask').waitFor({ state: 'hidden' })
+  const errorBanner = page.locator('.usage-snapshot-error')
+  await errorBanner.waitFor({ state: 'visible' })
+  assert.match(await errorBanner.innerText(), /完整统计加载失败/)
+  assert.match(await page.locator('.token-kpi-row').innerText(), /当前 Token\s*1,000/)
+  assert.doesNotMatch(await page.locator('.token-kpi-row').innerText(), /7000/)
+
+  snapshotScenario = 'retry'
+  await errorBanner.getByRole('button', { name: '重新加载' }).click()
+  await errorBanner.waitFor({ state: 'hidden' })
+  assert.match(await page.locator('.token-kpi-row').innerText(), /当前 Token\s*2,000/)
 })
 
 test('真实 Chrome 同时处理三种来源的保留键而不污染原型或重复累计', async () => {
+  snapshotScenario = 'reserved'
   const result = await page.evaluate(async (keys) => {
     const objectBefore = Object.getOwnPropertyDescriptors(Object.prototype)
     const functionBefore = Object.getOwnPropertyDescriptors(Function.prototype)
