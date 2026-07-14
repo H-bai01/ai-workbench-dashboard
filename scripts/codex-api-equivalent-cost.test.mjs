@@ -72,6 +72,25 @@ test('GPT-5.6 三档官方标准价格按输入、输出和缓存分别计算', 
   assert.ok(Math.abs(calculateUsageCostWithBilling('gpt-5.6-luna', usage, 0, billing) - 60.12) < 1e-9)
 })
 
+test('GPT-5.6 只对单次超过 272K 输入的请求应用长上下文价格', () => {
+  const billing = configWithGpt56()
+  const shortRequest = { tokens: 272_100, input: 72_000, output: 100, cacheRead: 200_000, cacheWrite: 0 }
+  const longRequest = { tokens: 272_101, input: 72_001, output: 100, cacheRead: 200_000, cacheWrite: 0 }
+
+  assert.equal(
+    calculateUsageCostWithBilling('gpt-5.6-sol', shortRequest, 0, billing, Date.now(), { requestScoped: true }),
+    (72_000 / 1_000_000) * 36 + (200_000 / 1_000_000) * 3.6 + (100 / 1_000_000) * 216,
+  )
+  assert.equal(
+    calculateUsageCostWithBilling('gpt-5.6-sol', longRequest, 0, billing, Date.now(), { requestScoped: true }),
+    (72_001 / 1_000_000) * 36 * 2 + (200_000 / 1_000_000) * 3.6 * 2 + (100 / 1_000_000) * 216 * 1.5,
+  )
+  assert.equal(
+    calculateUsageCostWithBilling('gpt-5.6-sol', longRequest, 0, billing),
+    (72_001 / 1_000_000) * 36 + (200_000 / 1_000_000) * 3.6 + (100 / 1_000_000) * 216,
+  )
+})
+
 test('GPT-5.6 带版本后缀的模型使用最长前缀价格', () => {
   const billing = configWithGpt56()
   const resolved = resolveBillingConfig('gpt-5.6-sol-2026-07-14', billing)
@@ -125,6 +144,7 @@ test('隔离接口重新读取 Codex 历史日志并返回 API 等价费用状�
   writeSession('priced-session', 'gpt-5.6-sol', {
     input_tokens: 2_000_000,
     output_tokens: 1_000_000,
+    reasoning_output_tokens: 400_000,
     cached_input_tokens: 1_000_000,
     cache_write_tokens: 1_000_000,
     total_tokens: 5_000_000,
@@ -133,6 +153,13 @@ test('隔离接口重新读取 Codex 历史日志并返回 API 等价费用状�
     input_tokens: 100,
     output_tokens: 0,
     total_tokens: 100,
+  })
+  writeSession('gpt55-long-session', 'gpt-5.5', {
+    input_tokens: 300_000,
+    output_tokens: 100_000,
+    reasoning_output_tokens: 40_000,
+    cached_input_tokens: 200_000,
+    total_tokens: 400_000,
   })
   const delayedModelRows = [
     { timestamp, type: 'session_meta', payload: { id: 'delayed-model-session', cwd: tempHome } },
@@ -160,6 +187,48 @@ test('隔离接口重新读取 Codex 历史日志并返回 API 等价费用状�
     path.join(sessionsDir, 'delayed-model-session.jsonl'),
     `${delayedModelRows.map((row) => JSON.stringify(row)).join('\n')}\n`,
   )
+  const autoReviewCumulative = {
+    input_tokens: 100,
+    output_tokens: 10,
+    reasoning_output_tokens: 4,
+    cached_input_tokens: 0,
+    total_tokens: 110,
+  }
+  const unchangedUsageRows = [
+    { timestamp, type: 'session_meta', payload: { id: 'unchanged-usage-session', cwd: tempHome, model: 'codex-auto-review' } },
+    {
+      timestamp,
+      type: 'event_msg',
+      payload: {
+        type: 'token_count',
+        info: {
+          last_token_usage: autoReviewCumulative,
+          total_token_usage: autoReviewCumulative,
+        },
+      },
+    },
+    {
+      timestamp,
+      type: 'event_msg',
+      payload: {
+        type: 'token_count',
+        info: {
+          last_token_usage: {
+            input_tokens: 0,
+            output_tokens: 0,
+            reasoning_output_tokens: 0,
+            cached_input_tokens: 0,
+            total_tokens: 50_000,
+          },
+          total_token_usage: autoReviewCumulative,
+        },
+      },
+    },
+  ]
+  fs.writeFileSync(
+    path.join(sessionsDir, 'unchanged-usage-session.jsonl'),
+    `${unchangedUsageRows.map((row) => JSON.stringify(row)).join('\n')}\n`,
+  )
 
   await new Promise((resolve, reject) => {
     serviceServer.once('error', reject)
@@ -174,10 +243,16 @@ test('隔离接口重新读取 Codex 历史日志并返回 API 等价费用状�
   const payload = await response.json()
   const codex = payload.apps.find((app) => app.id === 'codex')
   assert.ok(codex)
-  assert.ok(Math.abs(codex.byModel['gpt-5.6-sol'].cost - 336.6) < 1e-9)
+  // priced-session 与 delayed-model-session 都超过 272K 输入：输入类 2x、输出 1.5x。
+  // reasoning_output_tokens 已包含在 output_tokens 中，不得重复计费。
+  assert.ok(Math.abs(codex.byModel['gpt-5.6-sol'].cost - 565.2) < 1e-9)
   assert.equal(codex.byModel['gpt-5.6-sol'].tokens, 6_000_000)
   assert.equal(codex.byModel['gpt-5.6-sol'].priceStatus, 'configured')
   assert.equal(codex.byModel['gpt-5.6-sol'].billingMode, 'per_token')
+  assert.ok(Math.abs(codex.byModel['gpt-5.5'].cost - 41.04) < 1e-9)
+  assert.equal(codex.byModel['gpt-5.5'].tokens, 400_000)
+  assert.equal(codex.byModel['codex-auto-review'].tokens, 110)
+  assert.equal(codex.byModel['codex-auto-review'].output, 10)
   assert.equal(codex.byModel['unknown-model'].priceStatus, 'unconfigured')
   assert.equal(codex.byModel.unknown, undefined)
   assert.equal(codex.usage.priceStatus, 'partial')

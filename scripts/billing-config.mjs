@@ -7,7 +7,10 @@ export const GPT56_BILLING_MODELS = Object.freeze({
     outputPriceCNYPerMillion: 30 * USD_TO_CNY_RATE,
     cacheReadPriceCNYPerMillion: 0.5 * USD_TO_CNY_RATE,
     cacheWritePriceCNYPerMillion: 6.25 * USD_TO_CNY_RATE,
-    note: 'OpenAI GPT-5.6 Sol 官方 API 标准短上下文（$5/$30，缓存读 $0.5、5 分钟缓存写 $6.25 per M），汇率 7.2，2026-07 官网核对',
+    longContextThresholdTokens: 272_000,
+    longContextInputMultiplier: 2,
+    longContextOutputMultiplier: 1.5,
+    note: 'OpenAI GPT-5.6 Sol 官方 API 标准价格（$5/$30，缓存读 $0.5、缓存写 $6.25 per M）；单次输入 >272K 时整次请求输入 2x、输出 1.5x，汇率 7.2，2026-07 官网核对',
   }),
   'gpt-5.6-terra': Object.freeze({
     mode: 'per_token',
@@ -15,7 +18,10 @@ export const GPT56_BILLING_MODELS = Object.freeze({
     outputPriceCNYPerMillion: 15 * USD_TO_CNY_RATE,
     cacheReadPriceCNYPerMillion: 0.25 * USD_TO_CNY_RATE,
     cacheWritePriceCNYPerMillion: 3.125 * USD_TO_CNY_RATE,
-    note: 'OpenAI GPT-5.6 Terra 官方 API 标准短上下文（$2.5/$15，缓存读 $0.25、5 分钟缓存写 $3.125 per M），汇率 7.2，2026-07 官网核对',
+    longContextThresholdTokens: 272_000,
+    longContextInputMultiplier: 2,
+    longContextOutputMultiplier: 1.5,
+    note: 'OpenAI GPT-5.6 Terra 官方 API 标准价格（$2.5/$15，缓存读 $0.25、缓存写 $3.125 per M）；单次输入 >272K 时整次请求输入 2x、输出 1.5x，汇率 7.2，2026-07 官网核对',
   }),
   'gpt-5.6-luna': Object.freeze({
     mode: 'per_token',
@@ -23,7 +29,10 @@ export const GPT56_BILLING_MODELS = Object.freeze({
     outputPriceCNYPerMillion: 6 * USD_TO_CNY_RATE,
     cacheReadPriceCNYPerMillion: 0.1 * USD_TO_CNY_RATE,
     cacheWritePriceCNYPerMillion: 1.25 * USD_TO_CNY_RATE,
-    note: 'OpenAI GPT-5.6 Luna 官方 API 标准短上下文（$1/$6，缓存读 $0.1、5 分钟缓存写 $1.25 per M），汇率 7.2，2026-07 官网核对',
+    longContextThresholdTokens: 272_000,
+    longContextInputMultiplier: 2,
+    longContextOutputMultiplier: 1.5,
+    note: 'OpenAI GPT-5.6 Luna 官方 API 标准价格（$1/$6，缓存读 $0.1、缓存写 $1.25 per M）；单次输入 >272K 时整次请求输入 2x、输出 1.5x，汇率 7.2，2026-07 官网核对',
   }),
 })
 

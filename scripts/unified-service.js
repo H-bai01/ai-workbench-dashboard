@@ -2599,7 +2599,7 @@ export function resolveBillingConfig(modelId, billingConfig) {
   return billingConfig?.fallback
 }
 
-export function calculateUsageCostWithBilling(modelId, usage, rawCost, billingConfig, timeMs = Date.now()) {
+export function calculateUsageCostWithBilling(modelId, usage, rawCost, billingConfig, timeMs = Date.now(), options = {}) {
   const cfg = resolveBillingConfig(modelId, billingConfig)
   if (!cfg) return rawCost || 0
 
@@ -2619,12 +2619,22 @@ export function calculateUsageCostWithBilling(modelId, usage, rawCost, billingCo
     outputTokens = totalTokens * 0.3
   }
 
+  const promptInputTokens = inputTokens + cacheReadTokens
+  const appliesLongContextPricing = options.requestScoped === true
+    && (Number(cfg.longContextThresholdTokens) || 0) > 0
+    && promptInputTokens > Number(cfg.longContextThresholdTokens)
+  const inputMultiplier = appliesLongContextPricing
+    ? (Number(cfg.longContextInputMultiplier) || 1)
+    : 1
+  const outputMultiplier = appliesLongContextPricing
+    ? (Number(cfg.longContextOutputMultiplier) || 1)
+    : 1
   const factor = getBillingDiscountFactor(cfg, timeMs)
   return (
-    (inputTokens / 1_000_000) * (Number(cfg.inputPriceCNYPerMillion) || 0) +
-    (outputTokens / 1_000_000) * (Number(cfg.outputPriceCNYPerMillion) || 0) +
-    (cacheReadTokens / 1_000_000) * (Number(cfg.cacheReadPriceCNYPerMillion) || 0) +
-    (cacheWriteTokens / 1_000_000) * (Number(cfg.cacheWritePriceCNYPerMillion) || 0)
+    (inputTokens / 1_000_000) * (Number(cfg.inputPriceCNYPerMillion) || 0) * inputMultiplier +
+    (outputTokens / 1_000_000) * (Number(cfg.outputPriceCNYPerMillion) || 0) * outputMultiplier +
+    (cacheReadTokens / 1_000_000) * (Number(cfg.cacheReadPriceCNYPerMillion) || 0) * inputMultiplier +
+    (cacheWriteTokens / 1_000_000) * (Number(cfg.cacheWritePriceCNYPerMillion) || 0) * inputMultiplier
   ) * factor
 }
 
@@ -2889,18 +2899,27 @@ function getLocalUsageTimestamp(entry) {
 
 function extractLocalUsageTotals(raw = {}, options = {}) {
   const usage = extractUsageTotals(raw)
-  const reasoning = firstNumber(
-    raw.reasoningOutputTokens,
-    raw.reasoning_output_tokens,
-    raw.reasoningTokens,
-    raw.reasoning_tokens
-  )
-  const explicitOutput = firstNumber(raw.outputTokens, raw.output_tokens, raw.completionTokens, raw.completion_tokens)
-  if (reasoning && explicitOutput) usage.output += reasoning
   if (options.cachedInputIncludedInInput && usage.cacheRead > 0 && usage.input >= usage.cacheRead) {
     usage.input -= usage.cacheRead
   }
   return usage
+}
+
+function hasLocalUsageBreakdown(usage = {}) {
+  return [usage.input, usage.output, usage.cacheRead, usage.cacheWrite]
+    .some((value) => (Number(value) || 0) > 0)
+}
+
+function subtractLocalUsageTotals(current = {}, previous = {}) {
+  const delta = {
+    tokens: (Number(current.tokens) || 0) - (Number(previous.tokens) || 0),
+    cost: 0,
+    input: (Number(current.input) || 0) - (Number(previous.input) || 0),
+    output: (Number(current.output) || 0) - (Number(previous.output) || 0),
+    cacheRead: (Number(current.cacheRead) || 0) - (Number(previous.cacheRead) || 0),
+    cacheWrite: (Number(current.cacheWrite) || 0) - (Number(previous.cacheWrite) || 0),
+  }
+  return Object.values(delta).every((value) => Number.isFinite(value) && value >= 0) ? delta : null
 }
 
 function localConversationTitle(value, maxLength = 30) {
@@ -3005,7 +3024,7 @@ function addLocalUsage(app, item, modelId, rawUsage, billingConfig, timeMs, rang
   const usage = { ...rawUsage }
   usage.billingMode = resolveBillingConfig(model, billingConfig)?.mode || 'unconfigured'
   usage.priceStatus = observationPriceConfigured(model, usage, billingConfig) ? 'configured' : 'unconfigured'
-  usage.cost = calculateUsageCostWithBilling(model, usage, usage.cost, billingConfig, timeMs)
+  usage.cost = calculateUsageCostWithBilling(model, usage, usage.cost, billingConfig, timeMs, { requestScoped: true })
 
   addUsageTotals(app.usage, usage)
   addUsageTotals(item.usage, usage)
@@ -3057,6 +3076,7 @@ async function collectCodexUsage(range, billingConfig) {
       let currentModel = 'unknown'
       let firstObservedModel = ''
       let firstActivityMs = 0
+      let previousCumulativeUsage = null
       const usageEvents = []
       await forEachJsonlObject(file.path, async (entry) => {
         const payload = entry?.payload || {}
@@ -3081,10 +3101,27 @@ async function collectCodexUsage(range, billingConfig) {
         }
         if (entry?.type !== 'event_msg' || payload?.type !== 'token_count') return
         const timeMs = entryTimeMs
+        const info = payload.info || {}
+        const cumulativeUsage = info.total_token_usage
+          ? extractLocalUsageTotals(info.total_token_usage, { cachedInputIncludedInInput: true })
+          : null
+        const lastUsage = extractLocalUsageTotals(info.last_token_usage || info.total_token_usage || {}, {
+          cachedInputIncludedInInput: true,
+        })
+        let usage = lastUsage
+        if (!hasLocalUsageBreakdown(lastUsage) && previousCumulativeUsage && cumulativeUsage) {
+          const cumulativeDelta = subtractLocalUsageTotals(cumulativeUsage, previousCumulativeUsage)
+          if (cumulativeDelta && hasLocalUsageBreakdown(cumulativeDelta)) {
+            usage = cumulativeDelta
+          } else if (cumulativeDelta?.tokens === 0) {
+            // Codex 会周期性写入“仅 total_tokens、累计值未变化”的状态刷新。
+            // 这不是新的模型请求，不能按未知输入/输出比例重复计费。
+            usage = null
+          }
+        }
+        if (cumulativeUsage) previousCumulativeUsage = cumulativeUsage
         if (!isTimeInLocalRange(timeMs, range)) return
-        const rawUsage = payload.info?.last_token_usage || payload.info?.total_token_usage
-        const usage = extractLocalUsageTotals(rawUsage || {}, { cachedInputIncludedInInput: true })
-        if (!hasUsageValue(usage)) return
+        if (!usage || !hasUsageValue(usage)) return
         usageEvents.push({ usage, model: currentModel, timeMs })
       })
 
@@ -6695,7 +6732,10 @@ export const server = http.createServer(async (req, res) => {
         inputPriceCNYPerMillion: 36,
         outputPriceCNYPerMillion: 216,
         cacheReadPriceCNYPerMillion: 3.6,
-        note: 'OpenAI GPT-5.5 官方 API 标准短上下文 ($5/$30，缓存读 $0.5 per M)，汇率 7.2，2026-07 官网核对',
+        longContextThresholdTokens: 272_000,
+        longContextInputMultiplier: 2,
+        longContextOutputMultiplier: 1.5,
+        note: 'OpenAI GPT-5.5 官方 API 标准价格 ($5/$30，缓存读 $0.5 per M)；单次输入 >272K 时整次请求输入 2x、输出 1.5x，汇率 7.2，2026-07 官网核对',
       },
       'gpt-5.5-pro': {
         mode: 'per_token',
