@@ -688,12 +688,13 @@ const timelineUpdatedAt = ref('')
 const timelineErrorNotified = ref(false)
 
 // Sprint 8: 图表时间范围选择
-type ChartRangeValue = 'today' | '3d' | '7d' | 'month' | 'lastMonth' | 'all' | 'custom'
+type ChartRangeValue = 'today' | '3d' | '7d' | '30d' | 'month' | 'lastMonth' | 'all' | 'custom'
 type ChartMetric = 'both' | 'tokens' | 'cost'
 const CHART_RANGES: Array<{ value: ChartRangeValue; label: string }> = [
   { value: 'today', label: '今天' },
   { value: '3d', label: '3 天' },
   { value: '7d', label: '7 天' },
+  { value: '30d', label: '30 天' },
   { value: 'month', label: '本月' },
   { value: 'lastMonth', label: '上个月' },
   { value: 'all', label: '全部' },
@@ -1567,6 +1568,7 @@ function chartRequestDays(range: ChartRangeValue): number | 'all' {
   if (range === 'today') return 1
   if (range === '3d') return 3
   if (range === '7d') return 7
+  if (range === '30d') return 30
   if (range === 'month') return today.getDate()
   if (range === 'lastMonth') {
     const lm = new Date(today.getFullYear(), today.getMonth()-1, 1)
@@ -1592,6 +1594,7 @@ function isDateInChartRange(dateKey: string): boolean {
   if (r === 'today') return datePart === formatDateKey(today)
   if (r === '3d') return target >= addDays(today,-2).getTime() && target <= today.getTime()
   if (r === '7d') return target >= addDays(today,-6).getTime() && target <= today.getTime()
+  if (r === '30d') return target >= addDays(today,-29).getTime() && target <= today.getTime()
   if (r === 'month') return target >= new Date(today.getFullYear(), today.getMonth(), 1).getTime() && target <= today.getTime()
   if (r === 'lastMonth') {
     const lmStart = new Date(today.getFullYear(), today.getMonth()-1, 1).getTime()

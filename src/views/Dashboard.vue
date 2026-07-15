@@ -1451,7 +1451,7 @@ interface TimelineDay {
   byModel?: ModelUsageMap
   byAgentByModel?: Record<string, ModelUsageMap>
 }
-type TokenMiniRangeValue = 'today' | '3d' | '7d' | 'month' | 'lastMonth' | 'custom' | 'all'
+type TokenMiniRangeValue = 'today' | '3d' | '7d' | '30d' | 'month' | 'lastMonth' | 'custom' | 'all'
 type TokenMiniSeriesKey = 'tokens' | 'cost'
 type TokenMiniMetric = TokenMiniSeriesKey | 'both'
 type PulseStatusFilter = 'all' | 'running' | 'idle' | 'aborted' | 'error'
@@ -1494,6 +1494,7 @@ const TOKEN_MINI_RANGES: Array<{ value: TokenMiniRangeValue; label: string }> = 
   { value: 'today', label: '今天' },
   { value: '3d', label: '3 天' },
   { value: '7d', label: '7 天' },
+  { value: '30d', label: '30 天' },
   { value: 'month', label: '本月' },
   { value: 'lastMonth', label: '上个月' },
   { value: 'all', label: '全部' },
@@ -1830,6 +1831,7 @@ function getTokenMiniRequestDays(
   if (range === 'today') return 1
   if (range === '3d') return 3
   if (range === '7d') return 7
+  if (range === '30d') return 30
   if (range === 'month') return today.getDate()
   if (range === 'lastMonth') {
     const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1)
@@ -1877,6 +1879,7 @@ function localAiUsageQuery(
   if (range === 'today') return `${makeRange(today)}&granularity=hour`
   if (range === '3d') return `days=3`
   if (range === '7d') return `days=7`
+  if (range === '30d') return `days=30`
   if (range === 'month') return makeRange(new Date(today.getFullYear(), today.getMonth(), 1))
   if (range === 'lastMonth') {
     const start = new Date(today.getFullYear(), today.getMonth() - 1, 1)

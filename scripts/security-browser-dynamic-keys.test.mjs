@@ -395,14 +395,16 @@ test('首页等待 OpenClaw 与本地用量都完成后才发布完整统计快�
   assert.match(await page.locator('.agent-pulse-app-tab').filter({ hasText: /Claude Code/ }).innerText(), /300/)
 })
 
-test('首页完整数据发布后在后台预热全部六个预设范围', async () => {
+test('首页完整数据发布后在后台预热全部七个预设范围', async () => {
   const deadline = Date.now() + 5000
-  while (prewarmRequests.size < 12 && Date.now() < deadline) {
+  while (prewarmRequests.size < 14 && Date.now() < deadline) {
     await new Promise(resolve => setTimeout(resolve, 20))
   }
-  assert.equal(prewarmRequests.size, 12)
-  assert.equal([...prewarmRequests].filter(value => value.startsWith('/api/local-ai-usage?')).length, 6)
-  assert.equal([...prewarmRequests].filter(value => value.startsWith('/api/cost-timeline?')).length, 6)
+  assert.equal(prewarmRequests.size, 14)
+  assert.equal([...prewarmRequests].filter(value => value.startsWith('/api/local-ai-usage?')).length, 7)
+  assert.equal([...prewarmRequests].filter(value => value.startsWith('/api/cost-timeline?')).length, 7)
+  assert.equal([...prewarmRequests].some(value => value.includes('days=30')), true)
+  assert.equal(await page.locator('.token-mini-ranges .token-mini-chip').filter({ hasText: /^30 天$/ }).count(), 1)
 })
 
 test('快速切换时间范围后迟到的旧请求不能覆盖最新完整快照', async () => {
