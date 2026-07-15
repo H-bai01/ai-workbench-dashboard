@@ -29,6 +29,7 @@ let initialLocalUsageGate
 let snapshotScenario = 'default'
 let delayedMonthRequests = 0
 let backgroundRefreshRequests = 0
+const prewarmRequests = new Set()
 let releaseDelayedMonth
 let delayedMonthGate
 
@@ -209,6 +210,9 @@ before(async () => {
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url())
     if (!url.pathname.startsWith('/api/')) return route.continue()
+    const isUsagePrewarm = url.searchParams.get('prewarm') === '1'
+      && (url.pathname === '/api/local-ai-usage' || url.pathname === '/api/cost-timeline')
+    if (isUsagePrewarm) prewarmRequests.add(`${url.pathname}?${url.searchParams.toString()}`)
     if (url.pathname === '/api/agent-avatar/custom-agent') {
       await route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1X1 })
       return
@@ -289,7 +293,8 @@ before(async () => {
       localUsageRequestStarted = true
       await initialLocalUsageGate
       const isToday = url.searchParams.get('granularity') === 'hour'
-      if (snapshotScenario === 'race' && !isToday) {
+      if (isUsagePrewarm) body = localUsageBody(500, isToday)
+      else if (snapshotScenario === 'race' && !isToday) {
         allowAbortedRoute = true
         delayedMonthRequests += 1
         await delayedMonthGate
@@ -330,7 +335,8 @@ before(async () => {
       } else body = localUsageBody(500)
     } else if (url.pathname === '/api/cost-timeline') {
       const isToday = url.searchParams.get('granularity') === 'hour'
-      if (snapshotScenario === 'race' && !isToday) {
+      if (isUsagePrewarm) body = { ok: true, timeline: snapshotTimeline(100, isToday) }
+      else if (snapshotScenario === 'race' && !isToday) {
         allowAbortedRoute = true
         delayedMonthRequests += 1
         await delayedMonthGate
@@ -387,6 +393,16 @@ test('首页等待 OpenClaw 与本地用量都完成后才发布完整统计快�
   assert.match(kpiText, /当前 Token\s*600/)
   assert.match(await page.locator('.agent-pulse-app-tab').filter({ hasText: /Codex/ }).innerText(), /200/)
   assert.match(await page.locator('.agent-pulse-app-tab').filter({ hasText: /Claude Code/ }).innerText(), /300/)
+})
+
+test('首页完整数据发布后在后台预热全部六个预设范围', async () => {
+  const deadline = Date.now() + 5000
+  while (prewarmRequests.size < 12 && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 20))
+  }
+  assert.equal(prewarmRequests.size, 12)
+  assert.equal([...prewarmRequests].filter(value => value.startsWith('/api/local-ai-usage?')).length, 6)
+  assert.equal([...prewarmRequests].filter(value => value.startsWith('/api/cost-timeline?')).length, 6)
 })
 
 test('快速切换时间范围后迟到的旧请求不能覆盖最新完整快照', async () => {

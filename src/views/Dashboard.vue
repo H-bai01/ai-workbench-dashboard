@@ -1499,6 +1499,7 @@ const TOKEN_MINI_RANGES: Array<{ value: TokenMiniRangeValue; label: string }> = 
   { value: 'all', label: '全部' },
 ]
 const DEFAULT_TOKEN_MINI_RANGE: TokenMiniRangeValue = 'today'
+const TOKEN_USAGE_PREWARM_INTERVAL_MS = 5 * 60 * 1000
 const TOKEN_METRIC_COLOR = '#0a84ff'
 const COST_METRIC_COLOR = '#30d158'
 const USD_TO_CNY_RATE = 7.2
@@ -1631,6 +1632,9 @@ const monitorShowHidden = ref(false)
 const monitorSourceFilter = ref<PulseAppId[]>(['openclaw', 'codex', 'claude-code'])
 const monitorHiddenKeys = ref<string[]>([])
 let localAiUsageTimer: ReturnType<typeof setInterval> | null = null
+let tokenUsagePrewarmTimer: ReturnType<typeof setInterval> | null = null
+let tokenUsagePrewarmInFlight: Promise<void> | null = null
+let tokenUsagePrewarmErrorNotified = false
 let tokenUsageSnapshotRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let tokenUsageSnapshotRequestId = 0
 let tokenUsageSnapshotAbortController: AbortController | null = null
@@ -1885,6 +1889,67 @@ function localAiUsageQuery(
   return 'days=all'
 }
 
+function tokenUsageRequestUrls(
+  range: TokenMiniRangeValue,
+  customRange: [string, string] | null,
+  options: { force?: boolean, prewarm?: boolean } = {},
+): { timelineUrl: string, localUsageUrl: string } {
+  const days = getTokenMiniRequestDays(range, customRange)
+  const granularityQuery = range === 'today' ? '&granularity=hour' : ''
+  const prewarmQuery = options.prewarm === true ? '&prewarm=1' : ''
+  const forceRefreshQuery = options.force === true ? '&refresh=1' : ''
+  return {
+    timelineUrl: `/api/cost-timeline?days=${encodeURIComponent(String(days))}${granularityQuery}${prewarmQuery}`,
+    localUsageUrl: `/api/local-ai-usage?${localAiUsageQuery(range, customRange)}${forceRefreshQuery}${prewarmQuery}`,
+  }
+}
+
+function prewarmTokenUsageRanges(): Promise<void> {
+  if (tokenUsagePrewarmInFlight) return tokenUsagePrewarmInFlight
+
+  const task = (async () => {
+    let firstError = ''
+    for (const option of TOKEN_MINI_RANGES) {
+      const { timelineUrl, localUsageUrl } = tokenUsageRequestUrls(option.value, null, { prewarm: true })
+      try {
+        const [timelineResponse, localUsageResponse] = await Promise.all([
+          fetch(timelineUrl),
+          fetch(localUsageUrl),
+        ])
+        const [timelineData, localUsageData] = await Promise.all([
+          timelineResponse.json().catch(() => ({})),
+          localUsageResponse.json().catch(() => ({})),
+        ])
+        if (!timelineResponse.ok || !localUsageResponse.ok || timelineData.error || localUsageData.error) {
+          throw new Error(timelineData.error || localUsageData.error || '后台缓存更新失败')
+        }
+      } catch (error) {
+        if (!firstError) firstError = error instanceof Error ? error.message : '后台缓存更新失败'
+        if (firstError.startsWith('模型识别失败：')) break
+      }
+    }
+
+    if (firstError) {
+      if (!tokenUsagePrewarmErrorNotified) {
+        tokenUsagePrewarmErrorNotified = true
+        store.addNotification({
+          type: 'error',
+          agentId: 'usage-prewarm',
+          agentName: '费用统计',
+          message: firstError.startsWith('模型识别失败：') ? firstError : '后台缓存更新失败',
+        })
+      }
+    } else {
+      tokenUsagePrewarmErrorNotified = false
+    }
+  })().finally(() => {
+    if (tokenUsagePrewarmInFlight === task) tokenUsagePrewarmInFlight = null
+  })
+
+  tokenUsagePrewarmInFlight = task
+  return task
+}
+
 async function refreshTokenUsageSnapshot(options: { blocking?: boolean, force?: boolean } = {}): Promise<void> {
   const requestId = ++tokenUsageSnapshotRequestId
   if (tokenUsageSnapshotRefreshTimer) {
@@ -1897,11 +1962,7 @@ async function refreshTokenUsageSnapshot(options: { blocking?: boolean, force?: 
 
   const range = tokenMiniRange.value
   const customRange = tokenMiniCustomRange.value ? [...tokenMiniCustomRange.value] as [string, string] : null
-  const days = getTokenMiniRequestDays(range, customRange)
-  const granularityQuery = range === 'today' ? '&granularity=hour' : ''
-  const timelineUrl = `/api/cost-timeline?days=${encodeURIComponent(String(days))}${granularityQuery}`
-  const forceRefreshQuery = options.force === true ? '&refresh=1' : ''
-  const localUsageUrl = `/api/local-ai-usage?${localAiUsageQuery(range, customRange)}${forceRefreshQuery}`
+  const { timelineUrl, localUsageUrl } = tokenUsageRequestUrls(range, customRange, { force: options.force })
   const blocking = options.blocking === true || !tokenUsageSnapshotReady.value || tokenUsageSnapshotBlocking.value
 
   tokenUsageSnapshotLoading.value = true
@@ -3279,6 +3340,7 @@ async function handleBillingSaved(): Promise<void> {
     refreshTokenUsageSnapshot({ blocking: true }),
     fetchLocalAiStatus(),
   ])
+  void prewarmTokenUsageRanges()
 }
 
 // Sprint 7: cmd+K global shortcut
@@ -3321,11 +3383,16 @@ onMounted(() => {
   // REC-011: 加载超时提示 — 每 1 秒检查
   checkLoadingHint()
   loadingCheckTimer = setInterval(checkLoadingHint, 1000)
-  void refreshTokenUsageSnapshot({ blocking: true })
+  void refreshTokenUsageSnapshot({ blocking: true }).then(() => {
+    if (tokenUsageSnapshotReady.value) void prewarmTokenUsageRanges()
+  })
   fetchLocalAiStatus()
   localAiUsageTimer = setInterval(() => {
     void refreshTokenUsageSnapshot()
   }, 60 * 1000)
+  tokenUsagePrewarmTimer = setInterval(() => {
+    void prewarmTokenUsageRanges()
+  }, TOKEN_USAGE_PREWARM_INTERVAL_MS)
   localAiStatusTimer = setInterval(fetchLocalAiStatus, 5 * 1000)
   // Sprint 7: cmd+K
   window.addEventListener('keydown', onGlobalKeydown)
@@ -3360,6 +3427,10 @@ onUnmounted(() => {
   if (localAiUsageTimer) {
     clearInterval(localAiUsageTimer)
     localAiUsageTimer = null
+  }
+  if (tokenUsagePrewarmTimer) {
+    clearInterval(tokenUsagePrewarmTimer)
+    tokenUsagePrewarmTimer = null
   }
   if (localAiStatusTimer) {
     clearInterval(localAiStatusTimer)
