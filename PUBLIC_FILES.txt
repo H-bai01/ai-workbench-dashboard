@@ -56,8 +56,10 @@ public/workflow-progress-example.json
 release/brand-assets.json
 release/source-provenance.json
 rollback.sh
+scripts/billing-config.mjs
 scripts/browser-secret-exposure.test.mjs
 scripts/ci-foundation.test.mjs
+scripts/codex-api-equivalent-cost.test.mjs
 scripts/cognitive-engine.mjs
 scripts/dashboard-token.d.mts
 scripts/dashboard-token.mjs
@@ -179,6 +181,8 @@ src/utils/safe-content.mjs
 src/utils/safe-record.d.mts
 src/utils/safe-record.mjs
 src/utils/tokenFormat.ts
+src/utils/uptime.d.mts
+src/utils/uptime.mjs
 src/utils/usageTimeline.ts
 src/views/Dashboard.vue
 src/vite-env.d.ts

@@ -2,7 +2,7 @@
 
 本地 AI 工具与多 Agent 可视化管理工作台 —— 一个地方实时掌控 OpenClaw、Codex、Claude Code 等本机 AI 工具的运行状态、对话历史、技能配置与资源消耗。
 
-当前本地正式版本：`v2.9.0`。
+当前本地正式版本：`v2.9.1`。
 
 当你在本机同时使用 OpenClaw、Codex、Claude Code 等 AI 工具时，本工作台让你：
 
@@ -16,7 +16,7 @@
 
 ## 功能特性
 
-- **指挥舱主界面**：Token 总览、APP/Agent 工作脉冲、贡献排行；支持今天 / 3 天 / 7 天 / 本月 / 上个月 / 全部多口径切换，Token 与费用可单独或同时显示。
+- **指挥舱主界面**：Token 总览、APP/Agent 工作脉冲、贡献排行；支持今天 / 3 天 / 7 天 / 30 天 / 本月 / 上个月 / 全部多口径切换，Token 与 API 等价费用可单独或同时显示，并记住当前浏览器最后一次选择。
 - **本地 AI 项目监控**：OpenClaw 按 Agent、Codex 与 Claude Code 按项目展示；本机产生的 Token 和费用会合并进入总览、贡献排行、模型排行与计费配置。
 - **项目专属明细**：从工作脉冲、贡献排行或监控明细进入同一项目范围，查看该项目的 Token、费用、趋势、模型和会话来源。
 - **统一只读执行记录**：OpenClaw 按 Agent、Codex 与 Claude Code 按项目进入统一会话时间线，查看真实用户消息、AI 回复、客户端记录的思考、工具调用、工具结果、结构化状态及安全产出元数据。
@@ -68,13 +68,13 @@ npm run start:v2
 Node.js 22.13.0 或更高版本的用户也可以直接运行 npm 正式包：
 
 ```bash
-npx ai-workbench-dashboard@2.9.0
+npx ai-workbench-dashboard@latest
 ```
 
 也可以先全局安装：
 
 ```bash
-npm install --global ai-workbench-dashboard@2.9.0
+npm install --global ai-workbench-dashboard@latest
 ai-workbench-dashboard start
 ```
 
@@ -111,7 +111,7 @@ HTTPS 语音包装器当前暂时停用。请统一使用 `npm run start:v2`；�
 
 工作台内的「版本迭代说明」面板会区分展示正式版（绿）与内测版（橙）。
 
-### v2.9.0 当前限制
+### v2.9.1 当前限制
 
 - 执行记录当前是只读功能；尚不能从工作台继续 Codex 或 Claude Code 会话，也未完成统一发送、停止、取消、恢复和实时流式执行。
 - 只显示客户端真实提供的 thinking、reasoning 或思考摘要；客户端没有记录时只显示降级提示，不推测未公开的内部思维。
