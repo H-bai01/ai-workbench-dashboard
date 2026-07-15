@@ -6,6 +6,7 @@ import { getUsageStats } from '../api/usage-stats'
 import { getVersion } from '../api/system'
 import { getDashboardHealth } from '../api/dashboard'
 import { createSafeRecord, ownValue, safeRecordFrom } from '../utils/safe-record.mjs'
+import { formatUptime } from '../utils/uptime.mjs'
 
 // Constants
 const AGENT_STATUS_FOREGROUND_INTERVAL = 1000 // 1s: 前台持续刷新，及时发现外部任务
@@ -431,25 +432,6 @@ export const useAgentStore = defineStore('agent', () => {
   // Methods
   function setFilterStatus(status: FilterStatus): void {
     filterStatus.value = status
-  }
-
-  /**
-   * Format uptime in milliseconds to human-readable string
-   */
-  function formatUptime(ms: number): string {
-    if (ms <= 0) return '未知'
-
-    const totalSeconds = Math.floor(ms / 1000)
-    const hours = Math.floor(totalSeconds / 3600)
-    const minutes = Math.floor((totalSeconds % 3600) / 60)
-
-    if (hours > 0) {
-      return `${hours}小时`
-    } else if (minutes > 0) {
-      return `${minutes}分钟`
-    } else {
-      return '< 1 分钟'
-    }
   }
 
   /**

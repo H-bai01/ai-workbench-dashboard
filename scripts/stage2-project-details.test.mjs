@@ -7,6 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { clampPercentage, modelTokenPercentages } from '../src/utils/percentage.mjs'
+import { formatUptime } from '../src/utils/uptime.mjs'
 import {
   createProjectTokenScope,
   filterTimelineBySourceIds,
@@ -92,6 +93,20 @@ test('工作台健康接口返回稳定 startedAt 与递增 uptimeMs', async (t)
   assert.ok(Number.isFinite(first.uptimeMs) && first.uptimeMs >= 0)
   assert.ok(second.uptimeMs >= first.uptimeMs + 80)
   assert.ok(Math.abs((Date.now() - Date.parse(second.startedAt)) - second.uptimeMs) < 500)
+})
+
+test('工作台运行时间按分钟、小时、天、星期、月和年逐级显示', () => {
+  const minute = 60_000
+  const hour = 60 * minute
+  const day = 24 * hour
+
+  assert.equal(formatUptime(30_000), '< 1 分钟')
+  assert.equal(formatUptime(32 * minute), '32分钟')
+  assert.equal(formatUptime(hour + 5 * minute), '1小时5分钟')
+  assert.equal(formatUptime(day + 2 * hour + 3 * minute), '1天2小时3分钟')
+  assert.equal(formatUptime(9 * day + 3 * hour + 4 * minute), '1星期2天3小时')
+  assert.equal(formatUptime(47 * day), '1月2星期3天')
+  assert.equal(formatUptime((365 + 60 + 21 + 4) * day), '1年2月3星期')
 })
 
 test('健康轮询不再从一秒 Agent状态轮询读取 Gateway uptime', () => {
