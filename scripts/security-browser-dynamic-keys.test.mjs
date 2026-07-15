@@ -477,6 +477,28 @@ test('后台缓存刷新完成后页面自动取回新结果', async () => {
   assert.match(await page.locator('.token-kpi-row').innerText(), /当前 Token\s*3,900/)
 })
 
+test('主页记住最后选择的时间范围并在下次打开时恢复', async () => {
+  snapshotScenario = 'default'
+  const activeRange = page.locator('.token-mini-ranges .token-mini-chip.active')
+
+  await page.locator('.token-mini-ranges .token-mini-chip').filter({ hasText: /^30 天$/ }).click()
+  await page.locator('.usage-snapshot-refreshing').waitFor({ state: 'hidden' })
+  assert.equal(await activeRange.innerText(), '30 天')
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('ai_workbench_dashboard_token_range_v1') || '{}').range), '30d')
+
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.waitForSelector('.dashboard')
+  await page.locator('.cockpit-inner > .el-loading-mask').waitFor({ state: 'hidden' })
+  assert.equal(await activeRange.innerText(), '30 天')
+
+  await page.locator('.token-mini-ranges .token-mini-chip').filter({ hasText: /^今天$/ }).click()
+  await page.locator('.usage-snapshot-refreshing').waitFor({ state: 'hidden' })
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.waitForSelector('.dashboard')
+  await page.locator('.cockpit-inner > .el-loading-mask').waitFor({ state: 'hidden' })
+  assert.equal(await activeRange.innerText(), '今天')
+})
+
 test('真实 Chrome 同时处理三种来源的保留键而不污染原型或重复累计', async () => {
   snapshotScenario = 'reserved'
   const result = await page.evaluate(async (keys) => {

@@ -1500,6 +1500,7 @@ const TOKEN_MINI_RANGES: Array<{ value: TokenMiniRangeValue; label: string }> = 
   { value: 'all', label: '全部' },
 ]
 const DEFAULT_TOKEN_MINI_RANGE: TokenMiniRangeValue = 'today'
+const TOKEN_MINI_RANGE_PREFERENCE_KEY = 'ai_workbench_dashboard_token_range_v1'
 const TOKEN_USAGE_PREWARM_INTERVAL_MS = 5 * 60 * 1000
 const TOKEN_METRIC_COLOR = '#0a84ff'
 const COST_METRIC_COLOR = '#30d158'
@@ -1820,8 +1821,50 @@ function dateKeyToTime(dateKey: string): number {
 function normalizeDateRange(value: string[] | null | undefined): [string, string] | null {
   if (!Array.isArray(value) || value.length < 2 || !value[0] || !value[1]) return null
   const [first, second] = value
-  return dateKeyToTime(first) <= dateKeyToTime(second) ? [first, second] : [second, first]
+  const firstTime = dateKeyToTime(first)
+  const secondTime = dateKeyToTime(second)
+  if (!Number.isFinite(firstTime) || !Number.isFinite(secondTime)) return null
+  return firstTime <= secondTime ? [first, second] : [second, first]
 }
+
+function isTokenMiniRangeValue(value: unknown): value is TokenMiniRangeValue {
+  return value === 'custom' || TOKEN_MINI_RANGES.some((option) => option.value === value)
+}
+
+function saveTokenMiniRangePreference(): void {
+  try {
+    localStorage.setItem(TOKEN_MINI_RANGE_PREFERENCE_KEY, JSON.stringify({
+      range: tokenMiniRange.value,
+      customRange: tokenMiniRange.value === 'custom' ? tokenMiniCustomRange.value : null,
+    }))
+  } catch {
+    // 浏览器禁用本地存储时仍可正常使用当前页面。
+  }
+}
+
+function loadTokenMiniRangePreference(): void {
+  try {
+    const raw = localStorage.getItem(TOKEN_MINI_RANGE_PREFERENCE_KEY)
+    if (!raw) return
+    const saved = JSON.parse(raw) as { range?: unknown; customRange?: unknown }
+    if (!isTokenMiniRangeValue(saved.range)) throw new Error('invalid_range')
+
+    if (saved.range === 'custom') {
+      const customRange = normalizeDateRange(Array.isArray(saved.customRange) ? saved.customRange : null)
+      if (!customRange) throw new Error('invalid_custom_range')
+      tokenMiniCustomRange.value = customRange
+      tokenMiniCustomRangeDraft.value = [...customRange]
+    }
+    tokenMiniRange.value = saved.range
+  } catch {
+    tokenMiniRange.value = DEFAULT_TOKEN_MINI_RANGE
+    tokenMiniCustomRange.value = null
+    tokenMiniCustomRangeDraft.value = []
+    try { localStorage.removeItem(TOKEN_MINI_RANGE_PREFERENCE_KEY) } catch { /* ignore */ }
+  }
+}
+
+loadTokenMiniRangePreference()
 
 function getTokenMiniRequestDays(
   range: TokenMiniRangeValue,
@@ -1850,6 +1893,7 @@ function getTokenMiniRequestDays(
 
 function setTokenMiniRange(range: TokenMiniRangeValue): void {
   tokenMiniRange.value = range
+  saveTokenMiniRangePreference()
   void refreshTokenUsageSnapshot()
 }
 
@@ -1864,6 +1908,7 @@ function setTokenMiniCustomRange(value: string[] | null): void {
   tokenMiniCustomRange.value = normalized
   tokenMiniCustomRangeDraft.value = [...normalized]
   tokenMiniRange.value = 'custom'
+  saveTokenMiniRangePreference()
   void refreshTokenUsageSnapshot()
 }
 
