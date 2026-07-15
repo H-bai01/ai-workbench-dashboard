@@ -1,7 +1,20 @@
 import { createSafeRecord, ensureSafeValue } from './safe-record.mjs'
 
 function emptyUsage() {
-  return { tokens: 0, cost: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+  return {
+    tokens: 0,
+    cost: 0,
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    inputCost: 0,
+    outputCost: 0,
+    cacheReadCost: 0,
+    cacheWriteCost: 0,
+    longContextCost: 0,
+    noCacheCost: 0,
+  }
 }
 
 function addUsage(target, source) {
@@ -12,6 +25,12 @@ function addUsage(target, source) {
   target.output += Number(source.output) || 0
   target.cacheRead += Number(source.cacheRead) || 0
   target.cacheWrite += Number(source.cacheWrite) || 0
+  target.inputCost += Number(source.inputCost) || 0
+  target.outputCost += Number(source.outputCost) || 0
+  target.cacheReadCost += Number(source.cacheReadCost) || 0
+  target.cacheWriteCost += Number(source.cacheWriteCost) || 0
+  target.longContextCost += Number(source.longContextCost) || 0
+  target.noCacheCost += Number(source.noCacheCost) || 0
 }
 
 export function normalizeProjectPath(value) {

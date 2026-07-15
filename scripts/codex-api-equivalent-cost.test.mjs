@@ -13,6 +13,7 @@ import {
 let tempRoot
 let tempHome
 let calculateUsageCostWithBilling
+let calculateUsageCostBreakdownWithBilling
 let observationPriceConfigured
 let resolveBillingConfig
 let serviceServer
@@ -37,6 +38,7 @@ before(async () => {
   const serviceUrl = pathToFileURL(path.join(process.cwd(), 'scripts', 'unified-service.js')).href
   const service = await import(serviceUrl)
   calculateUsageCostWithBilling = service.calculateUsageCostWithBilling
+  calculateUsageCostBreakdownWithBilling = service.calculateUsageCostBreakdownWithBilling
   observationPriceConfigured = service.observationPriceConfigured
   resolveBillingConfig = service.resolveBillingConfig
   serviceServer = service.server
@@ -70,6 +72,26 @@ test('GPT-5.6 三档官方标准价格按输入、输出和缓存分别计算', 
   assert.equal(calculateUsageCostWithBilling('gpt-5.6-sol', usage, 0, billing), 300.6)
   assert.equal(calculateUsageCostWithBilling('gpt-5.6-terra', usage, 0, billing), 150.3)
   assert.ok(Math.abs(calculateUsageCostWithBilling('gpt-5.6-luna', usage, 0, billing) - 60.12) < 1e-9)
+})
+
+test('费用明细按真实价格拆分并计算无缓存与长上下文费用', () => {
+  const billing = configWithGpt56()
+  const usage = { tokens: 4_000_000, input: 1_000_000, output: 1_000_000, cacheRead: 1_000_000, cacheWrite: 1_000_000 }
+  const detail = calculateUsageCostBreakdownWithBilling(
+    'gpt-5.6-sol',
+    usage,
+    0,
+    billing,
+    Date.now(),
+    { requestScoped: true },
+  )
+  assert.equal(detail.inputCost, 72)
+  assert.equal(detail.outputCost, 324)
+  assert.equal(detail.cacheReadCost, 7.2)
+  assert.equal(detail.cacheWriteCost, 90)
+  assert.equal(detail.totalCost, 493.2)
+  assert.ok(Math.abs(detail.longContextCost - 192.6) < 1e-9)
+  assert.equal(detail.noCacheCost, 540)
 })
 
 test('GPT-5.6 只对单次超过 272K 输入的请求应用长上下文价格', () => {
@@ -148,11 +170,6 @@ test('隔离接口重新读取 Codex 历史日志并返回 API 等价费用状�
     cached_input_tokens: 1_000_000,
     cache_write_tokens: 1_000_000,
     total_tokens: 5_000_000,
-  })
-  writeSession('unknown-session', 'unknown-model', {
-    input_tokens: 100,
-    output_tokens: 0,
-    total_tokens: 100,
   })
   writeSession('gpt55-long-session', 'gpt-5.5', {
     input_tokens: 300_000,
@@ -246,6 +263,12 @@ test('隔离接口重新读取 Codex 历史日志并返回 API 等价费用状�
   // priced-session 与 delayed-model-session 都超过 272K 输入：输入类 2x、输出 1.5x。
   // reasoning_output_tokens 已包含在 output_tokens 中，不得重复计费。
   assert.ok(Math.abs(codex.byModel['gpt-5.6-sol'].cost - 565.2) < 1e-9)
+  assert.ok(Math.abs(codex.byModel['gpt-5.6-sol'].inputCost - 144) < 1e-9)
+  assert.ok(Math.abs(codex.byModel['gpt-5.6-sol'].outputCost - 324) < 1e-9)
+  assert.ok(Math.abs(codex.byModel['gpt-5.6-sol'].cacheReadCost - 7.2) < 1e-9)
+  assert.ok(Math.abs(codex.byModel['gpt-5.6-sol'].cacheWriteCost - 90) < 1e-9)
+  assert.ok(Math.abs(codex.byModel['gpt-5.6-sol'].longContextCost - 228.6) < 1e-9)
+  assert.ok(Math.abs(codex.byModel['gpt-5.6-sol'].noCacheCost - 612) < 1e-9)
   assert.equal(codex.byModel['gpt-5.6-sol'].tokens, 6_000_000)
   assert.equal(codex.byModel['gpt-5.6-sol'].priceStatus, 'configured')
   assert.equal(codex.byModel['gpt-5.6-sol'].billingMode, 'per_token')
@@ -253,9 +276,35 @@ test('隔离接口重新读取 Codex 历史日志并返回 API 等价费用状�
   assert.equal(codex.byModel['gpt-5.5'].tokens, 400_000)
   assert.equal(codex.byModel['codex-auto-review'].tokens, 110)
   assert.equal(codex.byModel['codex-auto-review'].output, 10)
-  assert.equal(codex.byModel['unknown-model'].priceStatus, 'unconfigured')
   assert.equal(codex.byModel.unknown, undefined)
-  assert.equal(codex.usage.priceStatus, 'partial')
+  assert.equal(codex.usage.priceStatus, 'configured')
+})
+
+test('存在无法识别的模型时接口直接报错', async () => {
+  const sessionsDir = path.join(tempHome, '.codex', 'sessions', '2026', '07', '14')
+  const unknownFile = path.join(sessionsDir, 'unknown-session.jsonl')
+  const timestamp = new Date().toISOString()
+  fs.writeFileSync(unknownFile, `${[
+    { timestamp, type: 'session_meta', payload: { id: 'unknown-session', cwd: tempHome, model: 'unknown-model' } },
+    {
+      timestamp,
+      type: 'event_msg',
+      payload: { type: 'token_count', info: { last_token_usage: { input_tokens: 100, output_tokens: 0, total_tokens: 100 } } },
+    },
+  ].map((row) => JSON.stringify(row)).join('\n')}\n`)
+  try {
+    const address = serviceServer.address()
+    const localToken = fs.readFileSync(path.join(tempHome, '.openclaw', 'dashboard-local-token'), 'utf8').trim()
+    const today = new Date().toISOString().slice(0, 10)
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/local-ai-usage?start=${today}&end=${today}`, {
+      headers: { 'X-Dashboard-Token': localToken },
+    })
+    assert.equal(response.status, 422)
+    const payload = await response.json()
+    assert.equal(payload.error, '模型识别失败：unknown-model')
+  } finally {
+    fs.rmSync(unknownFile, { force: true })
+  }
 })
 
 test('本地用量扫描按范围缓存、复用进行中任务并并行读取两类客户端', () => {

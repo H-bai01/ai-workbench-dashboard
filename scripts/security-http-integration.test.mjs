@@ -874,26 +874,19 @@ test('用量、Local AI 与时间线对保留键完整计数且不污染原型',
   }
 
   const localResponse = await request(frontendPort, '/api/local-ai-usage?days=all')
-  assert.equal(localResponse.status, 200)
-  const localUsage = JSON.parse(localResponse.body)
-  const codex = localUsage.apps.find(app => app.id === 'codex')
-  assert.ok(codex)
+  assert.equal(localResponse.status, 422)
+  const localError = JSON.parse(localResponse.body)
+  assert.match(localError.error, /^模型识别失败：/)
   for (const key of reservedKeys) {
-    const item = codex.items.find(row => row.id === key)
-    assert.ok(item, `missing local conversation ${key}`)
-    assert.equal(Number.isFinite(item.usage.tokens), true)
-    assert.equal(Object.hasOwn(codex.byModel, key), true, `missing local model ${key}`)
+    assert.match(localError.error, new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   }
 
   const timelineResponse = await request(frontendPort, '/api/cost-timeline?days=30')
-  assert.equal(timelineResponse.status, 200)
-  const timeline = JSON.parse(timelineResponse.body).timeline
-  const maliciousBucket = timeline.find(bucket => reservedKeys.some(key => Object.hasOwn(bucket.byAgentByModel || {}, key)))
-  assert.ok(maliciousBucket)
+  assert.equal(timelineResponse.status, 422)
+  const timelineError = JSON.parse(timelineResponse.body)
+  assert.match(timelineError.error, /^模型识别失败：/)
   for (const key of reservedKeys) {
-    assert.equal(Object.hasOwn(maliciousBucket.byAgentByModel, key), true, `missing timeline agent ${key}`)
-    assert.equal(Object.hasOwn(maliciousBucket.byAgentByModel[key], key), true, `missing timeline model ${key}`)
-    assert.equal(Number.isFinite(maliciousBucket.byAgentByModel[key][key].tokens), true)
+    assert.match(timelineError.error, new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   }
 
   assert.deepEqual(Object.getOwnPropertyNames(Object.prototype).sort(), prototypeBefore)

@@ -7,11 +7,6 @@
     :close-on-click-modal="false"
     class="billing-config-dialog"
   >
-    <div class="bc-intro">
-      <el-icon><InfoFilled /></el-icon>
-      <span>按 token 单价用于计算 API 等价费用；包月订阅仅代表订阅口径，不会伪装成实际逐次账单。</span>
-    </div>
-
     <el-scrollbar height="52vh" class="bc-scroll">
       <div v-if="!localConfig" class="bc-empty">
         <el-icon class="is-loading"><Loading /></el-icon> 加载中…
@@ -399,20 +394,6 @@ async function handleSave() {
 </script>
 
 <style scoped>
-.bc-intro {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  margin-bottom: 14px;
-  font-size: 12px;
-  color: var(--text-secondary);
-  background: var(--fill-subtle);
-  border-radius: 8px;
-}
-.bc-intro b { color: var(--text-primary, #e5e5ea); }
-.bc-intro .el-icon { color: #0a84ff; margin-top: 2px; flex-shrink: 0; }
-
 .bc-empty {
   display: flex; align-items: center; justify-content: center; gap: 8px;
   padding: 60px 0; color: var(--text-secondary, #98989d);

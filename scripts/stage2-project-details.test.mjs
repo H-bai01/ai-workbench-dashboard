@@ -134,7 +134,20 @@ test('项目范围规范化路径、保留会话标题并安全去重', () => {
 })
 
 test('项目与单会话范围重算所有 Token、成本和模型明细', () => {
-  const usage = (tokens, cost) => ({ tokens, cost, input: tokens / 2, output: tokens / 2, cacheRead: 0, cacheWrite: 0 })
+  const usage = (tokens, cost) => ({
+    tokens,
+    cost,
+    input: tokens / 2,
+    output: tokens / 2,
+    cacheRead: 0,
+    cacheWrite: 0,
+    inputCost: cost * 0.2,
+    outputCost: cost * 0.3,
+    cacheReadCost: cost * 0.5,
+    cacheWriteCost: 0,
+    longContextCost: cost * 0.1,
+    noCacheCost: cost * 2,
+  })
   const timeline = [{
     date: '2026-07-11',
     ...usage(999, 99),
@@ -153,6 +166,12 @@ test('项目与单会话范围重算所有 Token、成本和模型明细', () =>
   assert.equal(projectA.byModel.shared.tokens, 300)
   assert.equal(projectA.byModel['**proto**'].tokens, 10)
   assert.equal(projectA.byModel.constructor.tokens, 20)
+  assert.ok(Math.abs(projectA.inputCost - 0.66) < 1e-9)
+  assert.ok(Math.abs(projectA.outputCost - 0.99) < 1e-9)
+  assert.ok(Math.abs(projectA.cacheReadCost - 1.65) < 1e-9)
+  assert.ok(Math.abs(projectA.longContextCost - 0.33) < 1e-9)
+  assert.ok(Math.abs(projectA.noCacheCost - 6.6) < 1e-9)
+  assert.ok(Math.abs(projectA.byModel.shared.inputCost - 0.6) < 1e-9)
   assert.deepEqual(Object.keys(projectA.byAgentByModel).sort(), ['local:codex:a-1', 'local:codex:a-2'])
 
   const oneConversation = filterTimelineBySourceIds(timeline, ['local:codex:a-2'])[0]

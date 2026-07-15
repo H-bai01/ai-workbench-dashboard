@@ -2422,7 +2422,20 @@ async function switchOpenClawVersion(version) {
 // ============================================
 
 function createUsageTotals() {
-  return { tokens: 0, cost: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+  return {
+    tokens: 0,
+    cost: 0,
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    inputCost: 0,
+    outputCost: 0,
+    cacheReadCost: 0,
+    cacheWriteCost: 0,
+    longContextCost: 0,
+    noCacheCost: 0,
+  }
 }
 
 function hasUsageValue(usage) {
@@ -2599,14 +2612,24 @@ export function resolveBillingConfig(modelId, billingConfig) {
   return billingConfig?.fallback
 }
 
-export function calculateUsageCostWithBilling(modelId, usage, rawCost, billingConfig, timeMs = Date.now(), options = {}) {
+export function calculateUsageCostBreakdownWithBilling(modelId, usage, rawCost, billingConfig, timeMs = Date.now(), options = {}) {
   const cfg = resolveBillingConfig(modelId, billingConfig)
-  if (!cfg) return rawCost || 0
+  const directCost = Number(rawCost) || 0
+  const directBreakdown = {
+    totalCost: directCost,
+    inputCost: 0,
+    outputCost: 0,
+    cacheReadCost: 0,
+    cacheWriteCost: 0,
+    longContextCost: 0,
+    noCacheCost: directCost,
+  }
+  if (!cfg) return directBreakdown
 
-  if (cfg.mode === 'free') return 0
-  if (cfg.mode === 'use_default') return rawCost || 0
-  if (cfg.mode === 'subscription_monthly') return rawCost || 0
-  if (cfg.mode !== 'per_token') return rawCost || 0
+  if (cfg.mode === 'free') {
+    return { ...directBreakdown, totalCost: 0, noCacheCost: 0 }
+  }
+  if (cfg.mode !== 'per_token') return directBreakdown
 
   const totalTokens = Number(usage?.tokens) || 0
   let inputTokens = Number(usage?.input) || 0
@@ -2630,12 +2653,38 @@ export function calculateUsageCostWithBilling(modelId, usage, rawCost, billingCo
     ? (Number(cfg.longContextOutputMultiplier) || 1)
     : 1
   const factor = getBillingDiscountFactor(cfg, timeMs)
-  return (
-    (inputTokens / 1_000_000) * (Number(cfg.inputPriceCNYPerMillion) || 0) * inputMultiplier +
-    (outputTokens / 1_000_000) * (Number(cfg.outputPriceCNYPerMillion) || 0) * outputMultiplier +
-    (cacheReadTokens / 1_000_000) * (Number(cfg.cacheReadPriceCNYPerMillion) || 0) * inputMultiplier +
-    (cacheWriteTokens / 1_000_000) * (Number(cfg.cacheWritePriceCNYPerMillion) || 0) * inputMultiplier
+  const inputRate = Number(cfg.inputPriceCNYPerMillion) || 0
+  const outputRate = Number(cfg.outputPriceCNYPerMillion) || 0
+  const cacheReadRate = Number(cfg.cacheReadPriceCNYPerMillion) || 0
+  const cacheWriteRate = Number(cfg.cacheWritePriceCNYPerMillion) || 0
+  const inputCost = (inputTokens / 1_000_000) * inputRate * inputMultiplier * factor
+  const outputCost = (outputTokens / 1_000_000) * outputRate * outputMultiplier * factor
+  const cacheReadCost = (cacheReadTokens / 1_000_000) * cacheReadRate * inputMultiplier * factor
+  const cacheWriteCost = (cacheWriteTokens / 1_000_000) * cacheWriteRate * inputMultiplier * factor
+  const totalCost = inputCost + outputCost + cacheReadCost + cacheWriteCost
+  const standardCost = (
+    (inputTokens / 1_000_000) * inputRate +
+    (outputTokens / 1_000_000) * outputRate +
+    (cacheReadTokens / 1_000_000) * cacheReadRate +
+    (cacheWriteTokens / 1_000_000) * cacheWriteRate
   ) * factor
+  const noCacheCost = (
+    ((inputTokens + cacheReadTokens + cacheWriteTokens) / 1_000_000) * inputRate * inputMultiplier +
+    (outputTokens / 1_000_000) * outputRate * outputMultiplier
+  ) * factor
+  return {
+    totalCost,
+    inputCost,
+    outputCost,
+    cacheReadCost,
+    cacheWriteCost,
+    longContextCost: Math.max(0, totalCost - standardCost),
+    noCacheCost,
+  }
+}
+
+export function calculateUsageCostWithBilling(modelId, usage, rawCost, billingConfig, timeMs = Date.now(), options = {}) {
+  return calculateUsageCostBreakdownWithBilling(modelId, usage, rawCost, billingConfig, timeMs, options).totalCost
 }
 
 export function observationPriceConfigured(modelId, usage, billingConfig) {
@@ -2650,6 +2699,20 @@ export function observationPriceConfigured(modelId, usage, billingConfig) {
     cfg.cacheReadPriceCNYPerMillion,
     cfg.cacheWritePriceCNYPerMillion,
   ].some(value => (Number(value) || 0) > 0)
+}
+
+function assertUsageModelsConfigured(entries) {
+  const unresolved = new Set()
+  for (const [modelId, usage] of entries || []) {
+    if (!hasUsageValue(usage)) continue
+    if (usage?.priceStatus === 'configured') continue
+    unresolved.add(normalizeModelId(modelId))
+  }
+  if (unresolved.size === 0) return
+  const models = [...unresolved].sort((a, b) => a.localeCompare(b)).join('、')
+  const error = new Error(`模型识别失败：${models}`)
+  error.statusCode = 422
+  throw error
 }
 
 function enrichObservationUsage(summary, billingConfig, timeMs = Date.now()) {
@@ -2687,6 +2750,12 @@ function addUsageTotals(target, usage) {
   target.output += Number(usage.output) || 0
   target.cacheRead += Number(usage.cacheRead) || 0
   target.cacheWrite += Number(usage.cacheWrite) || 0
+  target.inputCost += Number(usage.inputCost) || 0
+  target.outputCost += Number(usage.outputCost) || 0
+  target.cacheReadCost += Number(usage.cacheReadCost) || 0
+  target.cacheWriteCost += Number(usage.cacheWriteCost) || 0
+  target.longContextCost += Number(usage.longContextCost) || 0
+  target.noCacheCost += Number(usage.noCacheCost) || 0
   target.priceStatus = mergePriceStatus(target.priceStatus, usage.priceStatus)
   if (usage.billingMode) {
     target.billingMode = !target.billingMode || target.billingMode === usage.billingMode
@@ -3024,7 +3093,15 @@ function addLocalUsage(app, item, modelId, rawUsage, billingConfig, timeMs, rang
   const usage = { ...rawUsage }
   usage.billingMode = resolveBillingConfig(model, billingConfig)?.mode || 'unconfigured'
   usage.priceStatus = observationPriceConfigured(model, usage, billingConfig) ? 'configured' : 'unconfigured'
-  usage.cost = calculateUsageCostWithBilling(model, usage, usage.cost, billingConfig, timeMs, { requestScoped: true })
+  const costBreakdown = calculateUsageCostBreakdownWithBilling(
+    model,
+    usage,
+    usage.cost,
+    billingConfig,
+    timeMs,
+    { requestScoped: true },
+  )
+  Object.assign(usage, costBreakdown, { cost: costBreakdown.totalCost })
 
   addUsageTotals(app.usage, usage)
   addUsageTotals(item.usage, usage)
@@ -3265,6 +3342,7 @@ async function buildLocalAiUsageResult(range, billingConfig) {
       totals,
       updatedAt: new Date().toISOString(),
     }
+    assertUsageModelsConfigured(result.apps.flatMap((app) => Object.entries(app.byModel || {})))
     return result
 }
 
@@ -6981,7 +7059,7 @@ export const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify(result))
     } catch (e) {
       console.error('[local-ai-usage] error:', e.message)
-      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.writeHead(e?.statusCode || 500, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: e.message, apps: [], totals: createUsageTotals() }))
     }
     return
@@ -7578,7 +7656,14 @@ export const server = http.createServer(async (req, res) => {
         const model = normalizeModelId(modelId)
         usageTotals.billingMode = resolveBillingConfig(model, billingConfig)?.mode || 'unconfigured'
         usageTotals.priceStatus = observationPriceConfigured(model, usageTotals, billingConfig) ? 'configured' : 'unconfigured'
-        usageTotals.cost = calculateUsageCostWithBilling(model, usageTotals, usageTotals.cost, billingConfig, usageTimeMs)
+        const costBreakdown = calculateUsageCostBreakdownWithBilling(
+          model,
+          usageTotals,
+          usageTotals.cost,
+          billingConfig,
+          usageTimeMs,
+        )
+        Object.assign(usageTotals, costBreakdown, { cost: costBreakdown.totalCost })
 
         addUsageTotals(bucket, usageTotals)
         addUsageTotals(ensureUsageBucket(bucket.byModel, model), usageTotals)
@@ -7763,10 +7848,11 @@ export const server = http.createServer(async (req, res) => {
           timeline.push(ensureBucket(makeDayKey(t)))
         }
       }
+      assertUsageModelsConfigured(timeline.flatMap((day) => Object.entries(day.byModel || {})))
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ timeline, days: allRange ? 'all' : days, range: allRange ? 'all' : `${days}d`, granularity, generatedAt: Date.now() }))
     } catch (e) {
-      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.writeHead(e?.statusCode || 500, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: e.message, timeline: [] }))
     }
     return

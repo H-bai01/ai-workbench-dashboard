@@ -56,33 +56,50 @@
       </div>
     </div>
 
-    <!-- 时段消耗速览（随 Token / 成本切换）-->
-    <div class="period-deck" v-if="store.costSummary || timeline.length > 0">
-      <div class="period-glass period-glass--token" v-if="chartMetric !== 'cost'">
-        <div class="pg-head">Token</div>
-        <div class="pg-grid">
-          <div class="pg-item"><span class="pg-label">今日</span><strong>{{ formatTokenZh(todayUsage.tokens) }}</strong></div>
-          <div class="pg-item">
-            <span class="pg-label">本周</span><strong>{{ formatTokenZh(thisWeekUsage.tokens) }}</strong>
-            <span class="pg-hint" v-if="weeklyChangePercent !== 0" :class="weeklyChangePercent > 0 ? 'hint-up' : 'hint-down'">{{ weeklyChangePercent > 0 ? '▲' : '▼' }} 较上周 {{ Math.abs(weeklyChangePercent) }}%</span>
-          </div>
-          <div class="pg-item"><span class="pg-label">本月已用</span><strong>{{ formatTokenZh(monthUsage.tokens) }}</strong></div>
-          <div class="pg-item"><span class="pg-label">本月预估</span><strong>{{ formatTokenZh(monthForecastUsage.tokens) }}</strong><span class="pg-hint">按当前速度推算</span></div>
-          <div class="pg-item"><span class="pg-label">{{ currentRangeCardLabel }}</span><strong>{{ formatTokenZh(totalTokens) }}</strong></div>
-        </div>
+    <div class="api-summary-grid" v-if="timeline.length > 0">
+      <div class="api-summary-card api-summary-card--cost">
+        <span>API 总价</span>
+        <strong>{{ formatPeriodCost(timelineTotals) }}</strong>
       </div>
-      <div class="period-glass period-glass--cost" v-if="chartMetric !== 'tokens'">
-        <div class="pg-head">API 等价费用</div>
-        <div class="pg-grid">
-          <div class="pg-item"><span class="pg-label">今日</span><strong>{{ formatPeriodCost(todayUsage) }}</strong></div>
-          <div class="pg-item">
-            <span class="pg-label">本周</span><strong>{{ formatPeriodCost(thisWeekUsage) }}</strong>
-            <span class="pg-hint" v-if="weeklyChangePercent !== 0" :class="weeklyChangePercent > 0 ? 'hint-up' : 'hint-down'">{{ weeklyChangePercent > 0 ? '▲' : '▼' }} 较上周 {{ Math.abs(weeklyChangePercent) }}%</span>
-          </div>
-          <div class="pg-item"><span class="pg-label">本月已用</span><strong>{{ formatPeriodCost(monthUsage) }}</strong></div>
-          <div class="pg-item"><span class="pg-label">本月预估</span><strong>{{ formatPeriodCost(monthForecastUsage, true) }}</strong><span class="pg-hint">按当前速度推算</span></div>
-          <div class="pg-item"><span class="pg-label">{{ currentRangeCardLabel }}</span><strong>{{ formatPeriodCost(timelineTotals) }}</strong></div>
-        </div>
+      <div class="api-summary-card api-summary-card--token">
+        <span>总 Token</span>
+        <strong>{{ formatTokenZh(totalTokens) }}</strong>
+      </div>
+      <div class="api-summary-card">
+        <span>缓存命中率</span>
+        <strong>{{ cacheHitRateText }}</strong>
+      </div>
+      <div class="api-summary-card">
+        <span>无缓存等价费用</span>
+        <strong>{{ formatStandaloneCost(noCacheCost) }}</strong>
+      </div>
+    </div>
+
+    <div class="section client-breakdown" v-if="timeline.length > 0">
+      <div class="section-title client-breakdown-title">
+        <el-icon><Monitor /></el-icon>
+        客户端
+        <button
+          class="client-all-btn"
+          :class="{ active: clientFilter === 'all' }"
+          type="button"
+          @click="clientFilter = 'all'"
+        >全部</button>
+      </div>
+      <div class="client-card-grid">
+        <button
+          v-for="client in clientRows"
+          :key="client.id"
+          class="client-card"
+          :class="{ active: clientFilter === client.id }"
+          type="button"
+          @click="clientFilter = client.id"
+        >
+          <span class="client-card-name">{{ client.name }}</span>
+          <strong>{{ formatTokenZh(client.usage.tokens) }}</strong>
+          <span>{{ formatStandaloneCost(client.usage.cost) }}</span>
+          <span class="client-card-share">费用占比 {{ client.pct }}%</span>
+        </button>
       </div>
     </div>
 
@@ -276,6 +293,20 @@
         <span class="section-hint">{{ tableScopeHint }}</span>
       </div>
       <el-table :data="modelRows" stripe size="small" class="model-table">
+        <el-table-column type="expand" width="44">
+          <template #default="{ row }">
+            <div class="model-cost-breakdown">
+              <div><span>非缓存输入</span><strong>{{ formatTokenZh(row.input) }}</strong></div>
+              <div><span>缓存输入</span><strong>{{ formatTokenZh(row.cacheTokens) }}</strong></div>
+              <div><span>输出</span><strong>{{ formatTokenZh(row.output) }}</strong></div>
+              <div><span>输入费用</span><strong>{{ formatStandaloneCost(row.inputCost) }}</strong></div>
+              <div><span>缓存输入费用</span><strong>{{ formatStandaloneCost(row.cacheCost) }}</strong></div>
+              <div><span>输出费用</span><strong>{{ formatStandaloneCost(row.outputCost) }}</strong></div>
+              <div><span>长上下文费用</span><strong>{{ formatStandaloneCost(row.longContextCost) }}</strong></div>
+              <div class="model-cost-breakdown-total"><span>API 总价</span><strong>{{ formatStandaloneCost(row.cost) }}</strong></div>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="模型" min-width="240">
           <template #default="{ row }">
             <div class="model-cell">
@@ -296,55 +327,19 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column v-if="chartMetric !== 'cost'" label="Token 用量" align="right" min-width="118">
+        <el-table-column label="Token 用量" align="right" min-width="138">
           <template #default="{ row }">
             <span class="token-num" :title="formatTokenRaw(row.tokens)">{{ formatTokenZh(row.tokens) }}</span>
           </template>
         </el-table-column>
-        <el-table-column v-if="chartMetric !== 'cost'" label="输入" align="right" min-width="100">
-          <template #default="{ row }">
-            <span class="token-split-num" :title="formatTokenRaw(row.input)">{{ formatTokenZh(row.input) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column v-if="chartMetric !== 'cost'" label="输出" align="right" min-width="100">
-          <template #default="{ row }">
-            <span class="token-split-num" :title="formatTokenRaw(row.output)">{{ formatTokenZh(row.output) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column v-if="chartMetric !== 'cost'" label="缓存" align="right" min-width="100">
-          <template #default="{ row }">
-            <span class="token-split-num" :title="formatTokenRaw(row.cacheTokens)">{{ formatTokenZh(row.cacheTokens) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column v-if="chartMetric === 'cost'" label="API 等价总费用" prop="cost" align="right" min-width="150">
+        <el-table-column label="API 总价" prop="cost" align="right" min-width="150">
           <template #default="{ row }">
             <span :class="row.cost > 0 ? 'cost-num' : 'cost-zero'">
-              {{ formatCostDetail(row.cost, row.priceStatus, row.billingMode) }}
+              {{ formatStandaloneCost(row.cost) }}
             </span>
           </template>
         </el-table-column>
-        <el-table-column v-if="chartMetric === 'cost'" label="输入等价费用" prop="inputCost" align="right" min-width="134">
-          <template #default="{ row }">
-            <span :class="row.inputCost > 0 ? 'cost-num' : 'cost-zero'">
-              {{ formatCostDetail(row.inputCost, row.priceStatus, row.billingMode) }}
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column v-if="chartMetric === 'cost'" label="输出等价费用" prop="outputCost" align="right" min-width="134">
-          <template #default="{ row }">
-            <span :class="row.outputCost > 0 ? 'cost-num' : 'cost-zero'">
-              {{ formatCostDetail(row.outputCost, row.priceStatus, row.billingMode) }}
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column v-if="chartMetric === 'cost'" label="缓存等价费用" prop="cacheCost" align="right" min-width="134">
-          <template #default="{ row }">
-            <span :class="row.cacheCost > 0 ? 'cost-num' : 'cost-zero'">
-              {{ formatCostDetail(row.cacheCost, row.priceStatus, row.billingMode) }}
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column :label="`${metricLabel}占比`" align="right" min-width="176">
+        <el-table-column label="费用占比" align="right" min-width="176">
           <template #default="{ row }">
             <div class="pct-cell">
               <span class="pct-num">{{ row.pct }}%</span>
@@ -354,20 +349,13 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column v-if="chartMetric === 'both'" label="API 等价费用" align="right" min-width="150">
-          <template #default="{ row }">
-            <span :class="row.cost > 0 ? 'cost-num' : 'cost-zero'">
-              {{ formatCostDetail(row.cost, row.priceStatus, row.billingMode) }}
-            </span>
-          </template>
-        </el-table-column>
       </el-table>
 
       <!-- 总计行 -->
       <div class="total-row" data-testid="token-detail-total">
         <span class="total-label">合计</span>
-        <span v-if="chartMetric !== 'cost'" class="total-tokens">{{ formatTokenZhWithRaw(totalTokens) }}</span>
-        <span v-if="chartMetric !== 'tokens'" class="total-cost">{{ formatCostDetail(totalCost, timelineTotals.priceStatus, timelineTotals.billingMode) }}</span>
+        <span class="total-tokens">{{ formatTokenZhWithRaw(modelTableTotalTokens) }}</span>
+        <span class="total-cost">{{ formatStandaloneCost(modelTableTotalCost) }}</span>
       </div>
     </div>
 
@@ -626,11 +614,12 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
-import { Odometer, UserFilled, TrendCharts } from '@element-plus/icons-vue'
+import { Monitor, Odometer, UserFilled, TrendCharts } from '@element-plus/icons-vue'
 import { useAgentStore } from '../stores/agent'
 import { formatTokenRaw, formatTokenZh, formatTokenZhWithRaw } from '../utils/tokenFormat'
 import {
   isLocalUsageSourceId,
+  localUsageSourceAppId,
   localUsageSourceAvatarSrc,
   localUsageSourceDisplayName,
   mergeUsageTimelines,
@@ -673,6 +662,12 @@ interface UsageDatum {
   output?: number
   cacheRead?: number
   cacheWrite?: number
+  inputCost?: number
+  outputCost?: number
+  cacheReadCost?: number
+  cacheWriteCost?: number
+  longContextCost?: number
+  noCacheCost?: number
   priceStatus?: 'configured' | 'partial' | 'unconfigured'
   billingMode?: 'per_token' | 'free' | 'subscription_monthly' | 'use_default' | 'unconfigured' | 'mixed'
 }
@@ -690,6 +685,7 @@ interface TimelineDay {
 const chartLoading = ref(false)
 const timeline = ref<TimelineDay[]>([])
 const timelineUpdatedAt = ref('')
+const timelineErrorNotified = ref(false)
 
 // Sprint 8: 图表时间范围选择
 type ChartRangeValue = 'today' | '3d' | '7d' | 'month' | 'lastMonth' | 'all' | 'custom'
@@ -707,6 +703,8 @@ const chartRange = ref<ChartRangeValue>(DEFAULT_CHART_RANGE)
 const chartCustomRange = ref<[string, string] | null>(null)
 const chartCustomRangeDraft = ref<string[]>([])
 const chartMetric = ref<ChartMetric>('both')
+type ClientFilter = 'all' | 'openclaw' | 'codex' | 'claude-code'
+const clientFilter = ref<ClientFilter>('all')
 const modelFilter = ref<string[]>([])
 const agentFilter = ref<string[]>([])
 const hoveredChartIndex = ref<number | null>(null)
@@ -937,7 +935,7 @@ async function fetchTimeline(clearExisting = false) {
   timelineRequestId.value = requestId
   chartLoading.value = true
   clearChartHover()
-  if (clearExisting) timeline.value = []
+  void clearExisting
   try {
     const range = chartRequestDays(chartRange.value)
     const granularityQuery = chartRange.value === 'today' ? '&granularity=hour' : ''
@@ -945,18 +943,32 @@ async function fetchTimeline(clearExisting = false) {
       fetch(`/api/cost-timeline?days=${encodeURIComponent(String(range))}${granularityQuery}`),
       fetch(`/api/local-ai-usage?${localUsageQueryForChart()}`),
     ])
-    const openclawRes = openclawResult.status === 'fulfilled' ? openclawResult.value : null
-    const localRes = localResult.status === 'fulfilled' ? localResult.value : null
-    const openclawData = openclawRes?.ok ? await openclawRes.json() : {}
-    const localData = localRes?.ok ? await localRes.json() : {}
+    if (openclawResult.status === 'rejected' || localResult.status === 'rejected') {
+      throw new Error('费用明细加载失败')
+    }
+    const openclawData = await openclawResult.value.json().catch(() => ({}))
+    const localData = await localResult.value.json().catch(() => ({}))
+    if (!openclawResult.value.ok || !localResult.value.ok || openclawData.error || localData.error) {
+      throw new Error(openclawData.error || localData.error || '费用明细加载失败')
+    }
     if (requestId !== timelineRequestId.value) return
     timeline.value = mergeUsageTimelines(
       Array.isArray(openclawData.timeline) ? openclawData.timeline : [],
       Array.isArray(localData.timeline) ? localData.timeline : [],
     ) as TimelineDay[]
     timelineUpdatedAt.value = new Date().toLocaleString('zh-CN')
+    timelineErrorNotified.value = false
     clearChartHover()
-  } catch { /* ignore */ } finally {
+  } catch (error) {
+    if (requestId !== timelineRequestId.value || timelineErrorNotified.value) return
+    timelineErrorNotified.value = true
+    store.addNotification({
+      type: 'error',
+      agentId: 'usage-summary',
+      agentName: '费用统计',
+      message: error instanceof Error ? error.message : '费用明细加载失败',
+    })
+  } finally {
     if (requestId === timelineRequestId.value) chartLoading.value = false
   }
 }
@@ -976,6 +988,12 @@ function cloneUsage(usage: Partial<UsageDatum> | undefined): UsageDatum {
     output: Number(usage?.output) || 0,
     cacheRead: Number(usage?.cacheRead) || 0,
     cacheWrite: Number(usage?.cacheWrite) || 0,
+    inputCost: Number(usage?.inputCost) || 0,
+    outputCost: Number(usage?.outputCost) || 0,
+    cacheReadCost: Number(usage?.cacheReadCost) || 0,
+    cacheWriteCost: Number(usage?.cacheWriteCost) || 0,
+    longContextCost: Number(usage?.longContextCost) || 0,
+    noCacheCost: Number(usage?.noCacheCost) || 0,
     priceStatus: usage?.priceStatus,
     billingMode: usage?.billingMode,
   }
@@ -1005,6 +1023,33 @@ const sourceScopedTimeline = computed<TimelineDay[]>(() => {
     ? filterTimelineBySourceIds(rangeTimeline.value, sourceSet) as TimelineDay[]
     : rangeTimeline.value
 })
+
+function clientIdForSource(sourceId: string): Exclude<ClientFilter, 'all'> {
+  if (!isLocalUsageSourceId(sourceId)) return 'openclaw'
+  return localUsageSourceAppId(sourceId) === 'claude-code' ? 'claude-code' : 'codex'
+}
+
+const clientRows = computed(() => {
+  const clients: Array<{ id: Exclude<ClientFilter, 'all'>; name: string; usage: UsageDatum }> = [
+    { id: 'openclaw', name: 'OpenClaw', usage: emptyUsage() },
+    { id: 'codex', name: 'Codex', usage: emptyUsage() },
+    { id: 'claude-code', name: 'Claude Code', usage: emptyUsage() },
+  ]
+  const byId = new Map(clients.map((client) => [client.id, client]))
+  for (const day of sourceScopedTimeline.value) {
+    for (const [sourceId, modelMap] of Object.entries(day.byAgentByModel || {})) {
+      const client = byId.get(clientIdForSource(sourceId))
+      if (!client) continue
+      for (const usage of Object.values(modelMap || {})) addUsage(client.usage, usage)
+    }
+  }
+  const totalCost = clients.reduce((sum, client) => sum + client.usage.cost, 0)
+  return clients.map((client) => ({
+    ...client,
+    pct: totalCost > 0 ? Math.round((client.usage.cost / totalCost) * 100) : 0,
+  }))
+})
+
 const filteredTimeline = computed<TimelineDay[]>(() => {
   if (!hasModelFilter.value) return sourceScopedTimeline.value
   return sourceScopedTimeline.value.map((day) => {
@@ -1046,6 +1091,17 @@ const filteredTimeline = computed<TimelineDay[]>(() => {
       byAgentByModel: outByAgentByModel,
     }
   })
+})
+
+const modelTableTimeline = computed<TimelineDay[]>(() => {
+  if (clientFilter.value === 'all') return filteredTimeline.value
+  const sources = new Set<string>()
+  for (const day of filteredTimeline.value) {
+    for (const sourceId of Object.keys(day.byAgentByModel || {})) {
+      if (clientIdForSource(sourceId) === clientFilter.value) sources.add(sourceId)
+    }
+  }
+  return filterTimelineBySourceIds(filteredTimeline.value, sources) as TimelineDay[]
 })
 
 const chartMaxCost = computed(() => Math.max(...filteredTimeline.value.map(d => d.cost), 0.0001))
@@ -1377,6 +1433,12 @@ function addUsage(target: UsageDatum, usage: Partial<UsageDatum> | undefined) {
   target.output = (Number(target.output) || 0) + (Number(usage.output) || 0)
   target.cacheRead = (Number(target.cacheRead) || 0) + (Number(usage.cacheRead) || 0)
   target.cacheWrite = (Number(target.cacheWrite) || 0) + (Number(usage.cacheWrite) || 0)
+  target.inputCost = (Number(target.inputCost) || 0) + (Number(usage.inputCost) || 0)
+  target.outputCost = (Number(target.outputCost) || 0) + (Number(usage.outputCost) || 0)
+  target.cacheReadCost = (Number(target.cacheReadCost) || 0) + (Number(usage.cacheReadCost) || 0)
+  target.cacheWriteCost = (Number(target.cacheWriteCost) || 0) + (Number(usage.cacheWriteCost) || 0)
+  target.longContextCost = (Number(target.longContextCost) || 0) + (Number(usage.longContextCost) || 0)
+  target.noCacheCost = (Number(target.noCacheCost) || 0) + (Number(usage.noCacheCost) || 0)
   if (usage.priceStatus) {
     target.priceStatus = !target.priceStatus || target.priceStatus === usage.priceStatus
       ? usage.priceStatus
@@ -1394,19 +1456,24 @@ function addUsageToMap(map: ModelUsageMap, key: string, usage: Partial<UsageDatu
   addUsage(map[key], usage)
 }
 
-function splitCostByTokenParts(usage: Partial<UsageDatum>): { inputCost: number; outputCost: number; cacheCost: number } {
-  const cost = Number(usage.cost) || 0
-  if (cost <= 0) return { inputCost: 0, outputCost: 0, cacheCost: 0 }
-  const input = Number(usage.input) || 0
-  const output = Number(usage.output) || 0
-  const cache = (Number(usage.cacheRead) || 0) + (Number(usage.cacheWrite) || 0)
-  const total = input + output + cache
-  if (total <= 0) return { inputCost: 0, outputCost: 0, cacheCost: cost }
+function exactCostParts(usage: Partial<UsageDatum>): {
+  inputCost: number
+  outputCost: number
+  cacheCost: number
+  longContextCost: number
+  noCacheCost: number
+} {
   return {
-    inputCost: cost * (input / total),
-    outputCost: cost * (output / total),
-    cacheCost: cost * (cache / total),
+    inputCost: Number(usage.inputCost) || 0,
+    outputCost: Number(usage.outputCost) || 0,
+    cacheCost: (Number(usage.cacheReadCost) || 0) + (Number(usage.cacheWriteCost) || 0),
+    longContextCost: Number(usage.longContextCost) || 0,
+    noCacheCost: Number(usage.noCacheCost) || 0,
   }
+}
+
+function formatStandaloneCost(value: number): string {
+  return `¥${Math.max(0, Number(value) || 0).toFixed(2)}`
 }
 
 function formatCostDetail(value: number, priceStatus?: UsageDatum['priceStatus'], billingMode?: UsageDatum['billingMode']): string {
@@ -1426,7 +1493,7 @@ const timelineTotals = computed(() => filteredTimeline.value.reduce(
 
 const rangeByModel = computed<ModelUsageMap>(() => {
   const out: ModelUsageMap = createSafeRecord()
-  for (const day of filteredTimeline.value) {
+  for (const day of modelTableTimeline.value) {
     const byModel = day.byModel || {}
     const entries = Object.entries(byModel)
     if (entries.length === 0) {
@@ -1456,9 +1523,20 @@ const rangeByAgentByModel = computed<AgentModelUsageMap>(() => {
 
 // 当前图表范围总计
 const totalTokens = computed(() => timelineTotals.value.tokens)
-const totalCost = computed(() => timelineTotals.value.cost)
+const noCacheCost = computed(() => Number(timelineTotals.value.noCacheCost) || 0)
+const cacheHitRate = computed(() => {
+  const cacheRead = Number(timelineTotals.value.cacheRead) || 0
+  const allInput = (Number(timelineTotals.value.input) || 0)
+    + cacheRead
+    + (Number(timelineTotals.value.cacheWrite) || 0)
+  return allInput > 0 ? (cacheRead / allInput) * 100 : 0
+})
+const cacheHitRateText = computed(() => `${cacheHitRate.value.toFixed(1)}%`)
+const modelTableTotalTokens = computed(() => Object.values(rangeByModel.value)
+  .reduce((sum, usage) => sum + (Number(usage.tokens) || 0), 0))
+const modelTableTotalCost = computed(() => Object.values(rangeByModel.value)
+  .reduce((sum, usage) => sum + (Number(usage.cost) || 0), 0))
 const activeMetricProp = computed<'tokens' | 'cost'>(() => chartMetric.value === 'cost' ? 'cost' : 'tokens')
-const metricLabel = computed(() => chartMetric.value === 'cost' ? 'API 等价费用' : 'Token')
 
 function startOfLocalDay(date: Date): Date { const n = new Date(date); n.setHours(0,0,0,0); return n }
 function addDays(date: Date, days: number): Date { const n = new Date(date); n.setDate(n.getDate()+days); return n }
@@ -1532,58 +1610,19 @@ function formatDateKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
-function sumUsageRows(rows: Array<Partial<UsageDatum>>): UsageDatum {
-  return rows.reduce<UsageDatum>((sum, usage) => {
-    addUsage(sum, usage)
-    return sum
-  }, emptyUsage())
-}
-
-function formatPeriodCost(usage: Partial<UsageDatum>, forecast = false): string {
+function formatPeriodCost(usage: Partial<UsageDatum>): string {
   if (usage.priceStatus === 'unconfigured') return '价格未配置'
   const cost = Number(usage.cost) || 0
   if (usage.billingMode === 'free') return '¥0（免费）'
-  const text = cost > 0 ? `¥${forecast ? cost.toFixed(0) : cost.toFixed(2)}` : '¥0'
+  const text = cost > 0 ? `¥${cost.toFixed(2)}` : '¥0'
   return usage.priceStatus === 'partial' ? `部分未配置 · ${text}` : text
 }
 
-const todayUsage = computed(() => {
-  const today = formatDateKey(new Date())
-  return sumUsageRows(filteredTimeline.value.filter((day) => timelineDatePart(day.date) === today))
-})
-
-const thisWeekUsage = computed(() => {
-  const today = startOfLocalDay(new Date())
-  const weekStart = addDays(today, -6).getTime()
-  return sumUsageRows(filteredTimeline.value.filter((day) => {
-    const target = dateKeyToTime(timelineDatePart(day.date))
-    return target >= weekStart && target <= today.getTime()
-  }))
-})
-
-const monthUsage = computed(() => {
-  const now = new Date()
-  const prefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-`
-  return sumUsageRows(filteredTimeline.value.filter((day) => day.date.startsWith(prefix)))
-})
-
-const monthForecastUsage = computed(() => {
-  const now = new Date()
-  const elapsedDays = Math.max(1, now.getDate())
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
-  const factor = daysInMonth / elapsedDays
-  const usage = monthUsage.value
-  return {
-    ...usage,
-    tokens: usage.tokens * factor,
-    cost: usage.cost * factor,
-  }
-})
-
-const currentRangeCardLabel = computed(() => `${chartRangeTitle.value}合计`)
 const tableScopeHint = computed(() => {
-  const metric = chartMetric.value === 'both' ? 'Token + API 等价费用' : metricLabel.value
-  return `${chartRangeTitle.value} · ${metric} · ${modelScopeHint.value}`
+  const client = clientFilter.value === 'all'
+    ? '全部客户端'
+    : clientRows.value.find((row) => row.id === clientFilter.value)?.name || '全部客户端'
+  return `${chartRangeTitle.value} · ${client} · ${modelScopeHint.value}`
 })
 
 const modelScopeHint = computed(() => {
@@ -1596,13 +1635,11 @@ const modelScopeHint = computed(() => {
 // 按模型汇总行
 const modelRows = computed(() => {
   const byModel = rangeByModel.value
-  const metric = activeMetricProp.value
-  const total = metric === 'cost' ? totalCost.value : totalTokens.value
-  const safeTotal = total || 1
+  const safeTotal = modelTableTotalCost.value || 1
   return Object.entries(byModel)
     .filter(([, data]) => (Number(data.tokens) || 0) > 0 || (Number(data.cost) || 0) > 0)
     .map(([model, data]) => {
-      const costParts = splitCostByTokenParts(data)
+      const costParts = exactCostParts(data)
       return {
         model,
         displayName: getModelDisplayName(model),
@@ -1614,11 +1651,11 @@ const modelRows = computed(() => {
         output: Number(data.output) || 0,
         cacheTokens: (Number(data.cacheRead) || 0) + (Number(data.cacheWrite) || 0),
         ...costParts,
-        pct: Math.round(((data[metric] || 0) / safeTotal) * 100),
+        pct: Math.round(((Number(data.cost) || 0) / safeTotal) * 100),
         color: getModelColor(model),
       }
     })
-    .sort((a, b) => b[metric] - a[metric])
+    .sort((a, b) => b.cost - a.cost)
 })
 
 // 各 Agent x 模型明细行（扁平化，每行独立——不再用 isFirst 分组以兼容筛排）
@@ -1644,7 +1681,7 @@ const agentModelRows = computed(() => {
   for (const [agentId, modelMap] of Object.entries(byAgentByModel)) {
     if (!modelMap) continue
     for (const [model, data] of Object.entries(modelMap)) {
-      const costParts = splitCostByTokenParts(data)
+      const costParts = exactCostParts(data)
       rows.push({
         agentId,
         agentName: getAgentDisplayName(agentId),
@@ -1703,7 +1740,10 @@ function applySourceFilter(value = props.sourceFilter) {
 }
 
 watch(visible, (val) => {
-  if (val) applySourceFilter()
+  if (val) {
+    clientFilter.value = 'all'
+    applySourceFilter()
+  }
 })
 
 watch(() => props.sourceFilter, (value) => {
@@ -2410,66 +2450,103 @@ const filteredAgentModelRows = computed(() => {
   padding: 0 4px;
 }
 
-.period-deck {
+.api-summary-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
   margin-bottom: 14px;
 }
-.period-glass {
-  border-radius: 12px;
-  padding: 12px 16px;
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
-}
-.period-glass--token {
-  background: rgba(10, 132, 255, 0.10);
-  border: 1px solid rgba(10, 132, 255, 0.28);
-}
-.period-glass--cost {
-  background: rgba(48, 209, 88, 0.09);
-  border: 1px solid rgba(48, 209, 88, 0.26);
-}
-.pg-head {
-  font-size: 12px;
-  font-weight: 700;
-  margin-bottom: 8px;
-  letter-spacing: 0.4px;
-}
-.period-glass--token .pg-head { color: #0a84ff; }
-.period-glass--cost .pg-head { color: #30d158; }
-.pg-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
-}
-.pg-item {
+.api-summary-card {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 5px;
   min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--fill-subtle);
 }
-.pg-label {
-  font-size: 11px;
+.api-summary-card span {
   color: var(--text-secondary);
-  white-space: nowrap;
+  font-size: 11px;
 }
-.pg-item strong {
-  font-size: 16px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
+.api-summary-card strong {
+  overflow: hidden;
   color: var(--text-primary);
+  font-size: 19px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
-.period-glass--token .pg-item strong { color: #0a84ff; }
-.period-glass--cost .pg-item strong { color: #30d158; }
-.pg-hint {
-  font-size: 10.5px;
-  color: var(--text-muted);
-  white-space: nowrap;
+.api-summary-card--cost strong { color: #30d158; }
+.api-summary-card--token strong { color: #0a84ff; }
+
+.client-breakdown { margin-bottom: 14px; }
+.client-breakdown-title { position: relative; }
+.client-all-btn {
+  margin-left: auto;
+  padding: 3px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: pointer;
 }
-.pg-hint.hint-up { color: var(--danger); }
-.pg-hint.hint-down { color: var(--success); }
+.client-all-btn.active {
+  border-color: rgba(10, 132, 255, 0.5);
+  color: #6cb2ff;
+  background: rgba(10, 132, 255, 0.14);
+}
+.client-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.client-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  color: var(--text-secondary);
+  background: var(--fill-subtle);
+  cursor: pointer;
+  text-align: left;
+}
+.client-card:hover,
+.client-card.active {
+  border-color: rgba(10, 132, 255, 0.48);
+  background: rgba(10, 132, 255, 0.1);
+}
+.client-card-name { color: var(--text-primary); font-weight: 700; }
+.client-card strong {
+  color: #0a84ff;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+.client-card-share { font-size: 11px; }
+
+.model-cost-breakdown {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px 16px;
+  background: rgba(10, 132, 255, 0.045);
+}
+.model-cost-breakdown > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--fill-subtle);
+}
+.model-cost-breakdown span { color: var(--text-secondary); font-size: 11px; }
+.model-cost-breakdown strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.model-cost-breakdown-total strong { color: #30d158; }
 
 .chart-plot {
   position: relative;
@@ -2500,6 +2577,12 @@ const filteredAgentModelRows = computed(() => {
 html.light-theme .chart-value-label {
   stroke: #ffffff;
   stroke-width: 4px;
+}
+
+@media (max-width: 800px) {
+  .api-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .client-card-grid { grid-template-columns: 1fr; }
+  .model-cost-breakdown { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 </style>
 

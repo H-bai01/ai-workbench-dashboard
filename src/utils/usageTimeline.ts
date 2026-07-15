@@ -5,6 +5,12 @@ export interface UsageDatum {
   output?: number
   cacheRead?: number
   cacheWrite?: number
+  inputCost?: number
+  outputCost?: number
+  cacheReadCost?: number
+  cacheWriteCost?: number
+  longContextCost?: number
+  noCacheCost?: number
 }
 
 export type ModelUsageMap = Record<string, UsageDatum>
@@ -52,7 +58,20 @@ export function localUsageSourceAvatarSrc(sourceId: string): string {
 }
 
 function emptyUsage(): UsageDatum {
-  return { tokens: 0, cost: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+  return {
+    tokens: 0,
+    cost: 0,
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    inputCost: 0,
+    outputCost: 0,
+    cacheReadCost: 0,
+    cacheWriteCost: 0,
+    longContextCost: 0,
+    noCacheCost: 0,
+  }
 }
 
 function addUsage(target: UsageDatum, usage: Partial<UsageDatum> | undefined): void {
@@ -63,6 +82,12 @@ function addUsage(target: UsageDatum, usage: Partial<UsageDatum> | undefined): v
   target.output = (Number(target.output) || 0) + (Number(usage.output) || 0)
   target.cacheRead = (Number(target.cacheRead) || 0) + (Number(usage.cacheRead) || 0)
   target.cacheWrite = (Number(target.cacheWrite) || 0) + (Number(usage.cacheWrite) || 0)
+  target.inputCost = (Number(target.inputCost) || 0) + (Number(usage.inputCost) || 0)
+  target.outputCost = (Number(target.outputCost) || 0) + (Number(usage.outputCost) || 0)
+  target.cacheReadCost = (Number(target.cacheReadCost) || 0) + (Number(usage.cacheReadCost) || 0)
+  target.cacheWriteCost = (Number(target.cacheWriteCost) || 0) + (Number(usage.cacheWriteCost) || 0)
+  target.longContextCost = (Number(target.longContextCost) || 0) + (Number(usage.longContextCost) || 0)
+  target.noCacheCost = (Number(target.noCacheCost) || 0) + (Number(usage.noCacheCost) || 0)
 }
 
 function ensureModel(map: ModelUsageMap, model: string): UsageDatum {

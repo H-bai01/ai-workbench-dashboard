@@ -427,9 +427,12 @@ test('刷新失败保留上一份完整快照并可重试为新的完整结果',
   snapshotScenario = 'failure'
   await page.locator('.token-mini-ranges .token-mini-chip').filter({ hasText: /^7 天$/ }).click()
   await page.locator('.cockpit-inner > .el-loading-mask').waitFor({ state: 'hidden' })
-  const errorBanner = page.locator('.usage-snapshot-error')
-  await errorBanner.waitFor({ state: 'visible' })
-  assert.match(await errorBanner.innerText(), /完整统计加载失败/)
+  const notificationButton = page.locator('.top-indicator-notif')
+  await page.waitForFunction(() => document.querySelector('.top-indicator-notif')?.textContent?.includes('条未读'))
+  await notificationButton.click()
+  const usageNotification = page.locator('.notif-item').filter({ hasText: '费用统计' }).first()
+  await usageNotification.waitFor({ state: 'visible' })
+  assert.match(await usageNotification.innerText(), /完整统计加载失败/)
   assert.equal(await page.locator('.token-kpi-row').innerText(), previousSnapshot.kpi)
   assert.equal(await page.locator('.token-mini-chart-head > span').innerText(), previousSnapshot.chartTitle)
   assert.equal(await page.locator('.agent-pulse-app-tab').filter({ hasText: /Codex/ }).innerText(), previousSnapshot.codex)
@@ -438,8 +441,8 @@ test('刷新失败保留上一份完整快照并可重试为新的完整结果',
   assert.doesNotMatch(await page.locator('.token-kpi-row').innerText(), /7000/)
 
   snapshotScenario = 'retry'
-  await errorBanner.getByRole('button', { name: '重新加载' }).click()
-  await errorBanner.waitFor({ state: 'hidden' })
+  await page.keyboard.press('Escape')
+  await page.locator('.token-mini-ranges .token-mini-chip').filter({ hasText: /^7 天$/ }).click()
   await page.locator('.usage-snapshot-refreshing').waitFor({ state: 'hidden' })
   assert.match(await page.locator('.token-kpi-row').innerText(), /当前 Token\s*2,000/)
 })
@@ -594,6 +597,21 @@ test('任意 Agent 名称、缺省头像和本地自定义头像在主要入口�
   await page.locator('.cockpit-link-btn').filter({ hasText: '看明细' }).click()
   await page.locator('.token-detail-dialog').waitFor({ state: 'visible' })
   await page.locator('.token-detail-dialog .detail-range-quick .range-btn').filter({ hasText: /^全部$/ }).click()
+  assert.deepEqual(
+    await page.locator('.token-detail-dialog .api-summary-card > span').allInnerTexts(),
+    ['API 总价', '总 Token', '缓存命中率', '无缓存等价费用'],
+  )
+  assert.deepEqual(
+    await page.locator('.token-detail-dialog .client-card-name').allInnerTexts(),
+    ['OpenClaw', 'Codex', 'Claude Code'],
+  )
+  await page.locator('.token-detail-dialog .client-card').filter({ hasText: 'Codex' }).click()
+  assert.equal(await page.locator('.token-detail-dialog .client-card.active').innerText().then(text => text.includes('Codex')), true)
+  await page.locator('.token-detail-dialog .client-card').filter({ hasText: 'OpenClaw' }).click()
+  const firstModelExpand = page.locator('.token-detail-dialog .model-table .el-table__expand-icon').first()
+  await firstModelExpand.click()
+  assert.match(await page.locator('.token-detail-dialog .model-cost-breakdown').first().innerText(), /非缓存输入[\s\S]*缓存输入[\s\S]*长上下文费用[\s\S]*API 总价/)
+  await page.locator('.token-detail-dialog .client-all-btn').click()
   const externalTokenRow = page.locator('.token-detail-dialog .el-table__row').filter({ hasText: '外部头像助手' })
   await externalTokenRow.waitFor({ state: 'visible' })
   assert.equal(await externalTokenRow.locator('img.agent-avatar-img').getAttribute('src'), '/avatars/default.svg')

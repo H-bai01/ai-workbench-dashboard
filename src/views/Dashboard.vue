@@ -179,10 +179,6 @@
           >全部模型</button>
         </div>
       </div>
-      <div v-if="tokenUsageSnapshotError && !tokenUsageSnapshotLoading" class="usage-snapshot-error" role="status">
-        <span>{{ tokenUsageSnapshotError }}</span>
-        <button type="button" @click="refreshTokenUsageSnapshot({ force: true })">重新加载</button>
-      </div>
       <div
         class="cockpit-inner"
         v-loading="tokenUsageSnapshotBlocking"
@@ -1615,7 +1611,7 @@ const tokenMiniTimeline = ref<TimelineDay[]>([])
 const tokenUsageSnapshotLoading = ref(false)
 const tokenUsageSnapshotBlocking = ref(true)
 const tokenUsageSnapshotReady = ref(false)
-const tokenUsageSnapshotError = ref('')
+const tokenUsageErrorNotified = ref(false)
 const tokenUsageSnapshotServerRefreshing = ref(false)
 const tokenUsageSnapshotRange = ref<TokenMiniRangeValue>(DEFAULT_TOKEN_MINI_RANGE)
 const tokenUsageSnapshotCustomRange = ref<[string, string] | null>(null)
@@ -1910,18 +1906,18 @@ async function refreshTokenUsageSnapshot(options: { blocking?: boolean, force?: 
 
   tokenUsageSnapshotLoading.value = true
   tokenUsageSnapshotBlocking.value = blocking
-  tokenUsageSnapshotError.value = ''
   try {
     const [timelineResponse, localUsageResponse] = await Promise.all([
       fetch(timelineUrl, { signal: controller.signal }),
       fetch(localUsageUrl, { signal: controller.signal }),
     ])
-    if (!timelineResponse.ok || !localUsageResponse.ok) throw new Error('usage_snapshot_request_failed')
-
     const [timelineData, localUsageData] = await Promise.all([
-      timelineResponse.json(),
-      localUsageResponse.json(),
+      timelineResponse.json().catch(() => ({})),
+      localUsageResponse.json().catch(() => ({})),
     ])
+    if (!timelineResponse.ok || !localUsageResponse.ok || timelineData.error || localUsageData.error) {
+      throw new Error(timelineData.error || localUsageData.error || '完整统计加载失败')
+    }
     if (requestId !== tokenUsageSnapshotRequestId) return
 
     // Vue 会在同一轮更新中提交这三项，页面不会先展示 OpenClaw 的部分结果。
@@ -1934,17 +1930,39 @@ async function refreshTokenUsageSnapshot(options: { blocking?: boolean, force?: 
     const cacheState = localUsageData?.cache
     tokenUsageSnapshotServerRefreshing.value = cacheState?.refreshing === true
     if (cacheState?.refreshFailed === true) {
-      tokenUsageSnapshotError.value = '后台更新失败，已保留上一份完整数据。'
+      if (!tokenUsageErrorNotified.value) {
+        tokenUsageErrorNotified.value = true
+        store.addNotification({
+          type: 'error',
+          agentId: 'usage-summary',
+          agentName: '费用统计',
+          message: '后台更新失败，当前数据未更新',
+        })
+      }
     } else if (cacheState?.refreshing === true) {
+      tokenUsageErrorNotified.value = false
       tokenUsageSnapshotRefreshTimer = setTimeout(() => {
         tokenUsageSnapshotRefreshTimer = null
         if (requestId === tokenUsageSnapshotRequestId) void refreshTokenUsageSnapshot()
       }, 10 * 1000)
+    } else {
+      tokenUsageErrorNotified.value = false
     }
   } catch (error) {
     if (controller.signal.aborted || requestId !== tokenUsageSnapshotRequestId) return
     tokenUsageSnapshotServerRefreshing.value = false
-    tokenUsageSnapshotError.value = '完整统计加载失败，已保留上一份完整数据。'
+    if (!tokenUsageErrorNotified.value) {
+      tokenUsageErrorNotified.value = true
+      const errorMessage = error instanceof Error && error.message.startsWith('模型识别失败：')
+        ? error.message
+        : '完整统计加载失败'
+      store.addNotification({
+        type: 'error',
+        agentId: 'usage-summary',
+        agentName: '费用统计',
+        message: errorMessage,
+      })
+    }
   } finally {
     if (requestId === tokenUsageSnapshotRequestId) {
       tokenUsageSnapshotLoading.value = false
@@ -4025,30 +4043,6 @@ onUnmounted(() => {
   box-shadow: var(--glass-inner-highlight), var(--glass-shadow);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
-}
-
-.usage-snapshot-error {
-  max-width: 1440px;
-  margin: -4px auto 14px;
-  padding: 9px 12px;
-  border: 1px solid rgba(255, 159, 10, 0.36);
-  border-radius: 10px;
-  color: #ffb340;
-  background: rgba(255, 159, 10, 0.08);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.usage-snapshot-error button {
-  border: 0;
-  color: #0a84ff;
-  background: transparent;
-  font: inherit;
-  cursor: pointer;
 }
 
 .usage-snapshot-refreshing {
