@@ -565,10 +565,11 @@
         <div class="ops-summary-list" aria-label="运行摘要">
           <button
             v-for="stat in statsCards"
-            :key="stat.label"
+            :key="stat.id"
             class="stat-pill"
             :class="[stat.class, { 'stat-clickable': !!stat.onClick }]"
             type="button"
+            :title="stat.title"
             @click="stat.onClick?.()"
           >
             <span class="stat-icon-wrap" :class="stat.iconClass">
@@ -948,6 +949,32 @@
 
     <!-- 计费配置 Dialog -->
     <BillingConfigDialog v-model:visible="billingDialogVisible" @saved="handleBillingSaved" />
+
+    <!-- 底部 Token / 费用摘要的独立时间范围 -->
+    <el-dialog
+      v-model="summaryUsageDialogVisible"
+      class="summary-usage-range-dialog"
+      width="480px"
+      append-to-body
+      destroy-on-close
+    >
+      <template #header>
+        <div class="summary-range-dialog-head">
+          <h2>摘要显示范围</h2>
+          <p>只影响底部 Token 和费用两张卡片，不跟随页面上方时间范围。</p>
+        </div>
+      </template>
+      <div class="summary-range-options" aria-label="摘要显示范围">
+        <button
+          v-for="option in SUMMARY_USAGE_RANGES"
+          :key="option.value"
+          class="token-mini-chip summary-range-option"
+          :class="{ active: summaryUsageRange === option.value }"
+          type="button"
+          @click="setSummaryUsageRange(option.value)"
+        >{{ option.label }}</button>
+      </div>
+    </el-dialog>
 
     <!-- 自定义布局 Dialog -->
     <LayoutSettingsDialog v-model:visible="layoutDialogVisible" />
@@ -1421,6 +1448,7 @@ const skillsDialogVisible = ref(false)
 
 // 计费配置 dialog
 const billingDialogVisible = ref(false)
+const summaryUsageDialogVisible = ref(false)
 
 function showSealedFeature(feature: string): void {
   ElMessage.info(`${feature}暂时停用`)
@@ -1588,6 +1616,7 @@ interface TimelineDay {
   byAgentByModel?: Record<string, ModelUsageMap>
 }
 type TokenMiniRangeValue = 'today' | '3d' | '7d' | '30d' | 'month' | 'lastMonth' | 'custom' | 'all'
+type SummaryUsageRangeValue = Exclude<TokenMiniRangeValue, 'custom'>
 type TokenMiniSeriesKey = 'tokens' | 'cost'
 type TokenMiniMetric = TokenMiniSeriesKey | 'both'
 type PulseStatusFilter = 'all' | 'running' | 'idle' | 'aborted' | 'error'
@@ -1637,6 +1666,17 @@ const TOKEN_MINI_RANGES: Array<{ value: TokenMiniRangeValue; label: string }> = 
 ]
 const DEFAULT_TOKEN_MINI_RANGE: TokenMiniRangeValue = 'today'
 const TOKEN_MINI_RANGE_PREFERENCE_KEY = 'ai_workbench_dashboard_token_range_v1'
+const SUMMARY_USAGE_RANGES: Array<{ value: SummaryUsageRangeValue; label: string }> = [
+  { value: 'today', label: '今天' },
+  { value: '3d', label: '近 3 天' },
+  { value: '7d', label: '近 7 天' },
+  { value: '30d', label: '近 30 天' },
+  { value: 'month', label: '本月' },
+  { value: 'lastMonth', label: '上个月' },
+  { value: 'all', label: '全部' },
+]
+const DEFAULT_SUMMARY_USAGE_RANGE: SummaryUsageRangeValue = 'month'
+const SUMMARY_USAGE_RANGE_PREFERENCE_KEY = 'ai_workbench_dashboard_summary_range_v1'
 const TOKEN_USAGE_PREWARM_INTERVAL_MS = 5 * 60 * 1000
 const TOKEN_METRIC_COLOR = '#0a84ff'
 const COST_METRIC_COLOR = '#30d158'
@@ -1760,6 +1800,12 @@ const tokenMiniHoverIndex = ref<number | null>(null)
 const localAiUsageApps = ref<LocalAiUsageApp[]>([])
 const localAiUsageTimeline = ref<TimelineDay[]>([])
 const localAiUsageLoading = computed(() => tokenUsageSnapshotLoading.value)
+const summaryUsageRange = ref<SummaryUsageRangeValue>(DEFAULT_SUMMARY_USAGE_RANGE)
+const summaryUsagePublishedRange = ref<SummaryUsageRangeValue>(DEFAULT_SUMMARY_USAGE_RANGE)
+const summaryUsageTimeline = ref<TimelineDay[]>([])
+const summaryUsageReady = ref(false)
+const summaryUsageLoading = ref(false)
+const summaryUsageErrorNotified = ref(false)
 const localAiStatusMap = ref<Record<string, LocalAiStatusItem>>(createSafeRecord())
 const selectedPulseAppId = ref<PulseAppId>('openclaw')
 const pulseStatusFilter = ref<PulseStatusFilter>('all')
@@ -1776,6 +1822,8 @@ let tokenUsagePrewarmErrorNotified = false
 let tokenUsageSnapshotRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let tokenUsageSnapshotRequestId = 0
 let tokenUsageSnapshotAbortController: AbortController | null = null
+let summaryUsageRequestId = 0
+let summaryUsageAbortController: AbortController | null = null
 let localAiStatusTimer: ReturnType<typeof setInterval> | null = null
 
 function toggleTokenMiniMetric(metric: TokenMiniSeriesKey): void {
@@ -2002,6 +2050,32 @@ function loadTokenMiniRangePreference(): void {
 
 loadTokenMiniRangePreference()
 
+function isSummaryUsageRangeValue(value: unknown): value is SummaryUsageRangeValue {
+  return SUMMARY_USAGE_RANGES.some((option) => option.value === value)
+}
+
+function saveSummaryUsageRangePreference(): void {
+  try {
+    localStorage.setItem(SUMMARY_USAGE_RANGE_PREFERENCE_KEY, summaryUsageRange.value)
+  } catch {
+    // 浏览器禁用本地存储时仍可正常使用当前页面。
+  }
+}
+
+function loadSummaryUsageRangePreference(): void {
+  try {
+    const saved = localStorage.getItem(SUMMARY_USAGE_RANGE_PREFERENCE_KEY)
+    if (!saved) return
+    if (!isSummaryUsageRangeValue(saved)) throw new Error('invalid_summary_range')
+    summaryUsageRange.value = saved
+  } catch {
+    summaryUsageRange.value = DEFAULT_SUMMARY_USAGE_RANGE
+    try { localStorage.removeItem(SUMMARY_USAGE_RANGE_PREFERENCE_KEY) } catch { /* ignore */ }
+  }
+}
+
+loadSummaryUsageRangePreference()
+
 function getTokenMiniRequestDays(
   range: TokenMiniRangeValue,
   customRange: [string, string] | null = tokenMiniCustomRange.value,
@@ -2094,6 +2168,36 @@ function tokenUsageRangeDescription(
 ): string {
   if (range === 'custom' && customRange) return `${customRange[0]} 至 ${customRange[1]}`
   return TOKEN_MINI_RANGES.find(option => option.value === range)?.label || '全部'
+}
+
+function isTimelineDateInRange(
+  dateKey: string,
+  range: TokenMiniRangeValue,
+  customRange: [string, string] | null = null,
+): boolean {
+  if (range === 'all') return true
+  const today = startOfLocalDay(new Date())
+  const target = dateKeyToTime(timelineDatePart(dateKey))
+  if (!Number.isFinite(target)) return false
+  if (range === 'today') return target === today.getTime()
+  if (range === '3d') return target >= addDays(today, -2).getTime() && target <= today.getTime()
+  if (range === '7d') return target >= addDays(today, -6).getTime() && target <= today.getTime()
+  if (range === '30d') return target >= addDays(today, -29).getTime() && target <= today.getTime()
+  if (range === 'month') {
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).getTime()
+    return target >= monthStart && target <= today.getTime()
+  }
+  if (range === 'lastMonth') {
+    const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1).getTime()
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).getTime()
+    return target >= lastMonthStart && target < monthStart
+  }
+  if (range === 'custom' && customRange) {
+    const start = dateKeyToTime(customRange[0])
+    const end = dateKeyToTime(customRange[1])
+    return target >= start && target <= end
+  }
+  return false
 }
 
 function prewarmTokenUsageRanges(): Promise<boolean> {
@@ -2250,6 +2354,79 @@ async function refreshTokenUsageSnapshot(options: { blocking?: boolean, force?: 
   }
 }
 
+async function refreshSummaryUsage(): Promise<boolean> {
+  const requestId = ++summaryUsageRequestId
+  summaryUsageAbortController?.abort()
+  const controller = new AbortController()
+  summaryUsageAbortController = controller
+  const range = summaryUsageRange.value
+  const { timelineUrl, localUsageUrl } = tokenUsageRequestUrls(range, null)
+  summaryUsageLoading.value = true
+
+  try {
+    const [timelineResponse, localUsageResponse] = await Promise.all([
+      fetch(timelineUrl, { signal: controller.signal }),
+      fetch(localUsageUrl, { signal: controller.signal }),
+    ])
+    const [timelineData, localUsageData] = await Promise.all([
+      timelineResponse.json().catch(() => ({})),
+      localUsageResponse.json().catch(() => ({})),
+    ])
+    if (!timelineResponse.ok || !localUsageResponse.ok || timelineData.error || localUsageData.error) {
+      throw new Error(timelineData.error || localUsageData.error || '摘要统计加载失败')
+    }
+    if (requestId !== summaryUsageRequestId) return false
+
+    const openClawTimeline = Array.isArray(timelineData.timeline) ? timelineData.timeline : []
+    const localTimeline = Array.isArray(localUsageData.timeline) ? localUsageData.timeline : []
+    summaryUsageTimeline.value = (mergeUsageTimelines(openClawTimeline, localTimeline) as TimelineDay[])
+      .filter((day) => isTimelineDateInRange(day.date, range))
+    summaryUsagePublishedRange.value = range
+    summaryUsageReady.value = true
+    summaryUsageErrorNotified.value = false
+    return true
+  } catch (error) {
+    if (controller.signal.aborted || requestId !== summaryUsageRequestId) return false
+    if (summaryUsageReady.value) {
+      summaryUsageRange.value = summaryUsagePublishedRange.value
+      saveSummaryUsageRangePreference()
+    }
+    if (!summaryUsageErrorNotified.value) {
+      summaryUsageErrorNotified.value = true
+      const message = error instanceof Error && error.message.startsWith('模型识别失败：')
+        ? error.message
+        : '摘要统计加载失败'
+      store.addNotification({
+        type: 'error',
+        agentId: 'summary-usage',
+        agentName: '费用统计',
+        message,
+        source: '底部 Token 与费用摘要',
+        detail: message.startsWith('模型识别失败：') ? message : '独立摘要时间范围未能完成统计。',
+        errorCode: message.startsWith('模型识别失败：') ? 'usage_model_unrecognized' : 'summary_usage_load_failed',
+        impact: '底部两张摘要卡片未更新。',
+        currentResult: summaryUsageReady.value
+          ? '继续显示上一份已经完成的摘要结果。'
+          : '当前还没有可以显示的完整摘要结果。',
+        timeRange: SUMMARY_USAGE_RANGES.find((option) => option.value === range)?.label || '本月',
+      })
+    }
+    return false
+  } finally {
+    if (requestId === summaryUsageRequestId) {
+      summaryUsageLoading.value = false
+      summaryUsageAbortController = null
+    }
+  }
+}
+
+function setSummaryUsageRange(range: SummaryUsageRangeValue): void {
+  summaryUsageRange.value = range
+  saveSummaryUsageRangePreference()
+  summaryUsageDialogVisible.value = false
+  void refreshSummaryUsage()
+}
+
 function localStatusClass(status: UnifiedStatus, label?: string): string {
   if (status === 'running') return 'is-running'
   if (status === 'error') return 'is-error'
@@ -2386,31 +2563,8 @@ function addUsageToMap(map: ModelUsageMap, model: string, usage: Partial<UsageDa
 }
 
 function isDateInTokenMiniRange(dateKey: string): boolean {
-  const today = startOfLocalDay(new Date())
-  const target = dateKeyToTime(dateKey)
-  const datePart = timelineDatePart(dateKey)
   const publishedRange = tokenUsageSnapshotRange.value
-  if (!Number.isFinite(target)) return false
-  if (publishedRange === 'today') return datePart === formatDateKey(today)
-  if (publishedRange === '3d') return target >= addDays(today, -2).getTime() && target <= today.getTime()
-  if (publishedRange === '7d') return target >= addDays(today, -6).getTime() && target <= today.getTime()
-  if (publishedRange === 'month') {
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).getTime()
-    return target >= monthStart && target <= today.getTime()
-  }
-  if (publishedRange === 'lastMonth') {
-    const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1).getTime()
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).getTime()
-    return target >= lastMonthStart && target < monthStart
-  }
-  if (publishedRange === 'custom') {
-    const range = tokenUsageSnapshotCustomRange.value
-    if (!range) return true
-    const start = dateKeyToTime(range[0])
-    const end = dateKeyToTime(range[1])
-    return target >= start && target <= end
-  }
-  return true
+  return isTimelineDateInRange(dateKey, publishedRange, tokenUsageSnapshotCustomRange.value)
 }
 
 const tokenMiniMergedTimeline = computed<TimelineDay[]>(() => (
@@ -2516,10 +2670,6 @@ const contributionEmptyText = computed(() => tokenMiniMetric.value === 'cost' ? 
 const contributionBarColor = computed(() => (
   tokenMiniMetric.value === 'cost' ? COST_METRIC_COLOR : TOKEN_METRIC_COLOR
 ))
-const tokenMiniModelScopeLabel = computed(() => {
-  if (!hasTokenMiniModelFilter.value) return '全部模型'
-  return tokenMiniSelectedModels.value.map((model) => getModelDisplayLabel(model)).join(' + ')
-})
 const tokenMiniActiveSeriesKeys = computed<TokenMiniSeriesKey[]>(() => (
   tokenMiniMetric.value === 'both' ? ['tokens', 'cost'] : [tokenMiniMetric.value]
 ))
@@ -2830,6 +2980,23 @@ const scopedUsageTotals = computed<UsageDatum>(() => {
 const scopedCostText = computed(() => formatCostScope(scopedUsageTotals.value.cost, scopedUsageTotals.value.priceStatus, scopedUsageTotals.value.billingMode))
 const scopedUsdText = computed(() => formatUsdScope(scopedUsageTotals.value.cost, scopedUsageTotals.value.priceStatus))
 const scopedTokenText = computed(() => formatTokenZh(scopedUsageTotals.value.tokens))
+const summaryUsageTotals = computed<UsageDatum>(() => summaryUsageTimeline.value.reduce(
+  (sum, day) => {
+    addUsage(sum, day)
+    return sum
+  },
+  emptyUsage(),
+))
+const summaryUsageRangeLabel = computed(() => {
+  const range = summaryUsageReady.value ? summaryUsagePublishedRange.value : summaryUsageRange.value
+  return SUMMARY_USAGE_RANGES.find((option) => option.value === range)?.label || '本月'
+})
+const summaryUsageTokenText = computed(() => formatTokenZh(summaryUsageTotals.value.tokens))
+const summaryUsageCostText = computed(() => formatCostScope(
+  summaryUsageTotals.value.cost,
+  summaryUsageTotals.value.priceStatus,
+  summaryUsageTotals.value.billingMode,
+))
 
 const scopedAgentUsageMap = computed<Record<string, UsageDatum>>(() => {
   const out: Record<string, UsageDatum> = createSafeRecord()
@@ -3479,19 +3646,19 @@ const statsCardsRaw = computed(() => [
   },
   {
     id: 'tokens',
-    label: '当前口径 Token',
-    value: tokenUsageSnapshotReady.value ? scopedTokenText.value : '汇总中',
-    subtitle: topModelSummary.value || tokenMiniRangeLabel.value,
+    label: `${summaryUsageRangeLabel.value} Token`,
+    value: summaryUsageReady.value ? summaryUsageTokenText.value : '汇总中',
+    title: summaryUsageLoading.value ? '摘要正在更新' : '点击修改摘要时间范围',
     icon: Odometer, iconClass: 'icon-orange', class: 'stat-tokens stat-clickable',
-    onClick: () => openTokenDetail(),
+    onClick: () => { summaryUsageDialogVisible.value = true },
   },
   {
     id: 'cost',
-    label: '当前口径费用',
-    value: tokenUsageSnapshotReady.value ? scopedCostText.value : '汇总中',
-    subtitle: `${tokenMiniRangeLabel.value} · ${tokenMiniModelScopeLabel.value}`,
+    label: `${summaryUsageRangeLabel.value}费用`,
+    value: summaryUsageReady.value ? summaryUsageCostText.value : '汇总中',
+    title: summaryUsageLoading.value ? '摘要正在更新' : '点击修改摘要时间范围',
     icon: Money, iconClass: 'icon-green', class: 'stat-cost stat-clickable',
-    onClick: () => openTokenDetail(),
+    onClick: () => { summaryUsageDialogVisible.value = true },
   },
 ])
 
@@ -3500,15 +3667,6 @@ const statsCards = computed(() => {
   const order = layoutConfig.value.statsCards
   const map = new Map(statsCardsRaw.value.map(c => [c.id, c]))
   return order.map(id => map.get(id)).filter(Boolean) as typeof statsCardsRaw.value
-})
-
-// Token 卡片的模型摘要（最多显示 2 个主要模型）
-const topModelSummary = computed(() => {
-  return modelShareRows.value
-    .filter((row) => isTokenMiniModelActive(row.model))
-    .slice(0, 2)
-    .map((row) => row.label)
-    .join(' · ')
 })
 
 // Health
@@ -3555,6 +3713,7 @@ async function handleBillingSaved(): Promise<void> {
     store.fetchGlobalUsage(),
     store.fetchCostSummary(),
     refreshTokenUsageSnapshot({ blocking: true }),
+    refreshSummaryUsage(),
     fetchLocalAiStatus(),
   ])
   void prewarmTokenUsageRanges()
@@ -3603,9 +3762,11 @@ onMounted(() => {
   void refreshTokenUsageSnapshot({ blocking: true }).then(() => {
     if (tokenUsageSnapshotReady.value) void prewarmTokenUsageRanges()
   })
+  void refreshSummaryUsage()
   fetchLocalAiStatus()
   localAiUsageTimer = setInterval(() => {
     void refreshTokenUsageSnapshot()
+    void refreshSummaryUsage()
   }, 60 * 1000)
   tokenUsagePrewarmTimer = setInterval(() => {
     void prewarmTokenUsageRanges()
@@ -3619,6 +3780,8 @@ onMounted(() => {
 onUnmounted(() => {
   tokenUsageSnapshotAbortController?.abort()
   tokenUsageSnapshotAbortController = null
+  summaryUsageAbortController?.abort()
+  summaryUsageAbortController = null
   if (tokenUsageSnapshotRefreshTimer) {
     clearTimeout(tokenUsageSnapshotRefreshTimer)
     tokenUsageSnapshotRefreshTimer = null
@@ -5785,6 +5948,31 @@ onUnmounted(() => {
 }
 
 /* ==================== OPS SUMMARY ==================== */
+.summary-range-dialog-head h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 21px;
+}
+
+.summary-range-dialog-head p {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.summary-range-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 4px 0 8px;
+}
+
+.summary-range-option {
+  min-height: 42px;
+  justify-content: center;
+}
+
 .ops-summary-list {
   display: grid;
   grid-template-columns: repeat(30, minmax(0, 1fr));
