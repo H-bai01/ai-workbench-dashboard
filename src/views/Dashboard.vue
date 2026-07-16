@@ -41,7 +41,7 @@
 
           <!-- 通知中心 -->
           <div class="top-control-slot" :style="{ order: topBarControlOrder('notifications') }">
-            <el-popover placement="bottom-end" :width="360" trigger="click" popper-class="notif-popper">
+            <el-popover v-model:visible="notificationPopoverVisible" placement="bottom-end" :width="360" trigger="click" popper-class="notif-popper">
               <template #reference>
                 <button class="top-indicator top-indicator-notif" :class="{ 'has-unread': store.unreadNotifications > 0 }">
                   <el-icon :size="13"><Bell /></el-icon>
@@ -64,11 +64,14 @@
                     暂无通知
                   </div>
                   <div v-else class="notif-list">
-                    <div
+                    <button
                       v-for="n in store.notifications"
                       :key="n.id"
+                      type="button"
                       class="notif-item"
                       :class="[`notif-${n.type}`, { unread: !n.read }]"
+                      :aria-label="`查看${n.agentName}通知详情`"
+                      @click="openNotificationDetail(n)"
                     >
                       <span class="notif-icon">{{ n.type === 'error' ? '!' : n.type === 'aborted' ? '-' : 'i' }}</span>
                       <div class="notif-body">
@@ -76,7 +79,8 @@
                         <div class="notif-msg">{{ n.message }}</div>
                         <div class="notif-time">{{ formatNotifTime(n.timestamp) }}</div>
                       </div>
-                    </div>
+                      <span class="notif-open-hint">查看详情</span>
+                    </button>
                   </div>
                 </div>
               </template>
@@ -1082,6 +1086,13 @@
     <!-- ActivityTimelineDialog 已改为内联时间线区域，保留弹窗备用（从命令面板打开）-->
     <ActivityTimelineDialog v-model="activityTimelineVisible" />
 
+    <NotificationDetailDialog
+      v-model="notificationDetailVisible"
+      :notification="selectedNotification"
+      :retrying="notificationRetrying"
+      @retry="retryNotification"
+    />
+
 
     <!-- Sprint 9: #6 快捷消息发送 FAB（Floating Action Button 浮动操作按钮）-->
     <QuickMsgFab />
@@ -1118,6 +1129,7 @@ import ProjectBoardDialog from '../components/ProjectBoardDialog.vue'
 import CronCenterDialog from '../components/CronCenterDialog.vue'
 import CommandPaletteDialog from '../components/CommandPaletteDialog.vue'
 import ActivityTimelineDialog from '../components/ActivityTimelineDialog.vue'
+import NotificationDetailDialog from '../components/NotificationDetailDialog.vue'
 import ChangelogPanel from '../components/ChangelogPanel.vue'
 import QuickMsgFab from '../components/QuickMsgFab.vue'
 import { useLayoutSettings } from '../composables/useLayoutSettings'
@@ -1134,6 +1146,7 @@ import { createSafeRecord, ownValue, safeRecordFrom } from '../utils/safe-record
 import { createProjectTokenScope, normalizeProjectPath, projectFolderName } from '../utils/project-token-scope.mjs'
 import type { ProjectTokenScope } from '../types/project-token-scope'
 import type { SessionObservationScope } from '../types/session-observation'
+import type { NotificationItem } from '../utils/notification-center.mjs'
 import {
   Monitor,
   CircleCheck,
@@ -1342,6 +1355,44 @@ const cronCenterVisible = ref(false)
 // Sprint 7: 命令面板 + 活动时间线弹窗备用（命令面板打开）
 const commandPaletteVisible = ref(false)
 const activityTimelineVisible = ref(false)
+const notificationPopoverVisible = ref(false)
+const notificationDetailVisible = ref(false)
+const selectedNotification = ref<NotificationItem | null>(null)
+const notificationRetrying = ref(false)
+
+async function openNotificationDetail(notification: NotificationItem): Promise<void> {
+  store.markNotificationRead(notification.id)
+  selectedNotification.value = store.notifications.find(item => item.id === notification.id) || notification
+  notificationPopoverVisible.value = false
+  await nextTick()
+  notificationDetailVisible.value = true
+}
+
+async function retryNotification(notification: NotificationItem): Promise<void> {
+  if (!notification.retryAction || notificationRetrying.value) return
+  notificationRetrying.value = true
+  try {
+    let succeeded = false
+    if (notification.retryAction === 'refresh-token-usage') {
+      succeeded = await refreshTokenUsageSnapshot({ blocking: true, force: true })
+    } else if (notification.retryAction === 'prewarm-token-usage') {
+      tokenUsagePrewarmErrorNotified = false
+      succeeded = await prewarmTokenUsageRanges()
+    }
+    if (succeeded) {
+      ElMessage.success('重新加载成功')
+      notificationDetailVisible.value = false
+    } else {
+      ElMessage.error('重新加载失败，错误详情已记录到通知中心')
+    }
+  } finally {
+    notificationRetrying.value = false
+  }
+}
+
+watch(notificationDetailVisible, (isVisible) => {
+  if (!isVisible) selectedNotification.value = null
+})
 
 // Agent 任务看板默认下沉，避免首屏拥挤
 const taskBoardExpanded = ref(false)
@@ -1635,7 +1686,7 @@ const monitorSourceFilter = ref<PulseAppId[]>(['openclaw', 'codex', 'claude-code
 const monitorHiddenKeys = ref<string[]>([])
 let localAiUsageTimer: ReturnType<typeof setInterval> | null = null
 let tokenUsagePrewarmTimer: ReturnType<typeof setInterval> | null = null
-let tokenUsagePrewarmInFlight: Promise<void> | null = null
+let tokenUsagePrewarmInFlight: Promise<boolean> | null = null
 let tokenUsagePrewarmErrorNotified = false
 let tokenUsageSnapshotRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let tokenUsageSnapshotRequestId = 0
@@ -1952,7 +2003,15 @@ function tokenUsageRequestUrls(
   }
 }
 
-function prewarmTokenUsageRanges(): Promise<void> {
+function tokenUsageRangeDescription(
+  range: TokenMiniRangeValue,
+  customRange: [string, string] | null,
+): string {
+  if (range === 'custom' && customRange) return `${customRange[0]} 至 ${customRange[1]}`
+  return TOKEN_MINI_RANGES.find(option => option.value === range)?.label || '全部'
+}
+
+function prewarmTokenUsageRanges(): Promise<boolean> {
   if (tokenUsagePrewarmInFlight) return tokenUsagePrewarmInFlight
 
   const task = (async () => {
@@ -1985,11 +2044,18 @@ function prewarmTokenUsageRanges(): Promise<void> {
           agentId: 'usage-prewarm',
           agentName: '费用统计',
           message: firstError.startsWith('模型识别失败：') ? firstError : '后台缓存更新失败',
+          source: '费用统计后台缓存',
+          detail: firstError.startsWith('模型识别失败：') ? firstError : '后台预加载完整统计时未能完成全部时间范围的读取。',
+          errorCode: firstError.startsWith('模型识别失败：') ? 'usage_model_unrecognized' : 'usage_prewarm_failed',
+          impact: '部分时间范围首次打开时可能仍需要等待完整统计。',
+          currentResult: '已经成功生成的缓存和当前页面数据保持不变。',
+          retryAction: 'prewarm-token-usage',
         })
       }
     } else {
       tokenUsagePrewarmErrorNotified = false
     }
+    return !firstError
   })().finally(() => {
     if (tokenUsagePrewarmInFlight === task) tokenUsagePrewarmInFlight = null
   })
@@ -1998,7 +2064,7 @@ function prewarmTokenUsageRanges(): Promise<void> {
   return task
 }
 
-async function refreshTokenUsageSnapshot(options: { blocking?: boolean, force?: boolean } = {}): Promise<void> {
+async function refreshTokenUsageSnapshot(options: { blocking?: boolean, force?: boolean } = {}): Promise<boolean> {
   const requestId = ++tokenUsageSnapshotRequestId
   if (tokenUsageSnapshotRefreshTimer) {
     clearTimeout(tokenUsageSnapshotRefreshTimer)
@@ -2027,7 +2093,7 @@ async function refreshTokenUsageSnapshot(options: { blocking?: boolean, force?: 
     if (!timelineResponse.ok || !localUsageResponse.ok || timelineData.error || localUsageData.error) {
       throw new Error(timelineData.error || localUsageData.error || '完整统计加载失败')
     }
-    if (requestId !== tokenUsageSnapshotRequestId) return
+    if (requestId !== tokenUsageSnapshotRequestId) return false
 
     // Vue 会在同一轮更新中提交这三项，页面不会先展示 OpenClaw 的部分结果。
     tokenMiniTimeline.value = Array.isArray(timelineData.timeline) ? timelineData.timeline : []
@@ -2046,6 +2112,13 @@ async function refreshTokenUsageSnapshot(options: { blocking?: boolean, force?: 
           agentId: 'usage-summary',
           agentName: '费用统计',
           message: '后台更新失败，当前数据未更新',
+          source: 'Token 与费用总览',
+          detail: '后台刷新没有生成新的完整统计结果。',
+          errorCode: 'usage_background_refresh_failed',
+          impact: `${tokenUsageRangeDescription(range, customRange)}范围的数据未更新。`,
+          currentResult: '页面继续显示上一份已经完成的统计结果。',
+          timeRange: tokenUsageRangeDescription(range, customRange),
+          retryAction: 'refresh-token-usage',
         })
       }
     } else if (cacheState?.refreshing === true) {
@@ -2057,8 +2130,9 @@ async function refreshTokenUsageSnapshot(options: { blocking?: boolean, force?: 
     } else {
       tokenUsageErrorNotified.value = false
     }
+    return cacheState?.refreshFailed !== true
   } catch (error) {
-    if (controller.signal.aborted || requestId !== tokenUsageSnapshotRequestId) return
+    if (controller.signal.aborted || requestId !== tokenUsageSnapshotRequestId) return false
     tokenUsageSnapshotServerRefreshing.value = false
     if (!tokenUsageErrorNotified.value) {
       tokenUsageErrorNotified.value = true
@@ -2070,8 +2144,18 @@ async function refreshTokenUsageSnapshot(options: { blocking?: boolean, force?: 
         agentId: 'usage-summary',
         agentName: '费用统计',
         message: errorMessage,
+        source: 'Token 与费用总览',
+        detail: errorMessage.startsWith('模型识别失败：') ? errorMessage : '完整统计请求未能成功完成。',
+        errorCode: errorMessage.startsWith('模型识别失败：') ? 'usage_model_unrecognized' : 'usage_snapshot_load_failed',
+        impact: `${tokenUsageRangeDescription(range, customRange)}范围的数据未更新。`,
+        currentResult: tokenUsageSnapshotReady.value
+          ? '页面继续显示上一份已经完成的统计结果。'
+          : '当前还没有可以显示的完整统计结果。',
+        timeRange: tokenUsageRangeDescription(range, customRange),
+        retryAction: 'refresh-token-usage',
       })
     }
+    return false
   } finally {
     if (requestId === tokenUsageSnapshotRequestId) {
       tokenUsageSnapshotLoading.value = false
@@ -6643,13 +6727,22 @@ html:not(.light-theme) .model-share-row.active {
   max-height: 380px;
 }
 .notif-item {
+  width: 100%;
   display: flex;
+  align-items: center;
   gap: 10px;
   padding: 10px 14px;
+  border: 0;
   border-bottom: 1px solid var(--border-color);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
   transition: background 0.15s;
 }
-.notif-item:hover { background: var(--fill-subtle); }
+.notif-item:hover,
+.notif-item:focus-visible { background: var(--fill-subtle); outline: none; }
 .notif-item.unread { background: rgba(10, 132, 255,0.06); }
 .notif-error.unread { background: rgba(255, 69, 58,0.08); }
 .notif-icon { font-size: 16px; flex-shrink: 0; }
@@ -6657,4 +6750,13 @@ html:not(.light-theme) .model-share-row.active {
 .notif-agent { font-size: 13px; font-weight: 600; color: var(--text-primary); }
 .notif-msg { font-size: 12px; color: var(--text-secondary); margin-top: 2px; line-height: 1.4; word-break: break-word; }
 .notif-time { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+.notif-open-hint {
+  flex: 0 0 auto;
+  color: #6cb2ff;
+  font-size: 10px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.notif-item:hover .notif-open-hint,
+.notif-item:focus-visible .notif-open-hint { opacity: 1; }
 </style>

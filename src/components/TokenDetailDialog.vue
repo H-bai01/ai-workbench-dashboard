@@ -968,6 +968,14 @@ async function fetchTimeline(clearExisting = false) {
       agentId: 'usage-summary',
       agentName: '费用统计',
       message: error instanceof Error ? error.message : '费用明细加载失败',
+      source: 'Token 消耗详情',
+      detail: '费用明细的时间线请求未能成功完成。',
+      errorCode: 'usage_detail_load_failed',
+      impact: `${chartRangeTitle.value}范围的明细图表未更新。`,
+      currentResult: timeline.value.length > 0
+        ? '弹窗继续显示上一份已经完成的明细数据。'
+        : '当前没有可以显示的费用明细数据。',
+      timeRange: chartRangeTitle.value,
     })
   } finally {
     if (requestId === timelineRequestId.value) chartLoading.value = false

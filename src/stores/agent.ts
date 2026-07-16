@@ -7,6 +7,14 @@ import { getVersion } from '../api/system'
 import { getDashboardHealth } from '../api/dashboard'
 import { createSafeRecord, ownValue, safeRecordFrom } from '../utils/safe-record.mjs'
 import { formatUptime } from '../utils/uptime.mjs'
+import {
+  clearPersistedNotifications,
+  loadPersistedNotifications,
+  normalizeNotification,
+  persistNotifications,
+  type NotificationInput,
+  type NotificationItem,
+} from '../utils/notification-center.mjs'
 
 // Constants
 const AGENT_STATUS_FOREGROUND_INTERVAL = 1000 // 1s: 前台持续刷新，及时发现外部任务
@@ -24,6 +32,14 @@ const BUBBLE_DURATION = 20000 // 20s 气泡自动消失
 
 function isPageHidden(): boolean {
   return typeof document !== 'undefined' && document.hidden
+}
+
+function notificationStorage(): Storage | null {
+  try {
+    return typeof window !== 'undefined' ? window.localStorage : null
+  } catch {
+    return null
+  }
 }
 
 function modelToString(model: unknown): string {
@@ -126,33 +142,42 @@ export const useAgentStore = defineStore('agent', () => {
   // ============================================
   // 通知中心 (Sprint 1)
   // ============================================
-  interface NotificationItem {
-    id: string
-    type: 'error' | 'aborted' | 'info'
-    agentId: string
-    agentName: string
-    message: string
-    timestamp: number
-    read: boolean
-  }
-  const notifications = ref<NotificationItem[]>([])
+  const notifications = ref<NotificationItem[]>(loadPersistedNotifications(notificationStorage()))
   const unreadNotifications = computed(() => notifications.value.filter(n => !n.read).length)
 
-  function addNotification(n: Omit<NotificationItem, 'id' | 'timestamp' | 'read'>) {
-    notifications.value.unshift({
+  function saveNotifications(): void {
+    persistNotifications(notificationStorage(), notifications.value)
+  }
+
+  function addNotification(n: NotificationInput) {
+    const notification = normalizeNotification({
       ...n,
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       timestamp: Date.now(),
       read: false,
     })
+    if (!notification) return
+    notifications.value.unshift(notification)
     // 上限 50 条
     if (notifications.value.length > 50) notifications.value = notifications.value.slice(0, 50)
+    saveNotifications()
+  }
+  function markNotificationRead(id: string) {
+    let changed = false
+    notifications.value = notifications.value.map((n) => {
+      if (n.id !== id || n.read) return n
+      changed = true
+      return { ...n, read: true }
+    })
+    if (changed) saveNotifications()
   }
   function markAllNotificationsRead() {
     notifications.value = notifications.value.map(n => ({ ...n, read: true }))
+    saveNotifications()
   }
   function clearNotifications() {
     notifications.value = []
+    clearPersistedNotifications(notificationStorage())
   }
 
   function checkStatusTransitions(oldList: AgentInfo[], newList: AgentInfo[]) {
@@ -166,7 +191,12 @@ export const useAgentStore = defineStore('agent', () => {
           type: 'error',
           agentId: cur.key.split(':')[1] || cur.key,
           agentName: cur.name,
-          message: `进入错误状态：${cur.errorMessage || cur.lastError || '未知错误'}`,
+          message: 'Agent 进入错误状态',
+          source: 'Agent 状态',
+          detail: '检测到该 Agent 的运行状态由其他状态变为错误。',
+          errorCode: 'agent_status_error',
+          impact: '该 Agent 当前可能无法继续处理任务。',
+          currentResult: '其他 Agent 和工作台功能不受影响。',
         })
       } else if (prev !== 'aborted' && cur.status === 'aborted') {
         addNotification({
@@ -174,6 +204,11 @@ export const useAgentStore = defineStore('agent', () => {
           agentId: cur.key.split(':')[1] || cur.key,
           agentName: cur.name,
           message: '会话被中断',
+          source: 'Agent 状态',
+          detail: '检测到该 Agent 的最近一次会话已中断。',
+          errorCode: 'agent_session_aborted',
+          impact: '本次会话未继续执行。',
+          currentResult: '工作台继续监控该 Agent 的后续状态。',
         })
       }
     }
@@ -1418,6 +1453,7 @@ export const useAgentStore = defineStore('agent', () => {
     notifications,
     unreadNotifications,
     addNotification,
+    markNotificationRead,
     markAllNotificationsRead,
     clearNotifications,
     // Methods
