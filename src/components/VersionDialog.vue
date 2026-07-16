@@ -17,6 +17,13 @@
       <span v-else class="last-sync">尚未同步</span>
     </div>
 
+    <div v-if="props.updateAvailable && props.latestVersion" class="update-available-banner">
+      <div>
+        <strong>OpenClaw 可更新至 {{ props.latestVersion }}</strong>
+        <span>当前版本 {{ props.currentVersion || '未知' }}，需要你确认后才会更新。</span>
+      </div>
+    </div>
+
     <!-- 版本切换进度提示 -->
     <div v-if="switching" class="switch-progress-bar">
       <el-icon class="is-loading" :size="16"><Loading /></el-icon>
@@ -35,6 +42,8 @@
         <template #default="{ row }">
           <span class="version-cell version-click" :title="row.version" @click="handleVersionClick(row)">{{ row.version }}
           </span>
+          <span v-if="isLatestUpdate(row.version)" class="latest-version-badge">可更新</span>
+          <span v-else-if="isPrereleaseVersion(row)" class="prerelease-version-badge">测试版</span>
         </template>
       </el-table-column>
 
@@ -46,7 +55,7 @@
       <el-table-column label="操作" width="100" align="center" fixed="right">
         <template #default="{ row }">
           <el-button
-            v-if="row.version === props.currentVersion"
+            v-if="isCurrentVersion(row.version)"
             size="small"
             disabled
             type="primary"
@@ -61,7 +70,7 @@
             :disabled="switching !== null"
             @click="handleSwitch(row.version)"
           >
-            {{ switching === row.version ? '切换中...' : '切换' }}
+            {{ switching === row.version ? '处理中...' : versionActionLabel(row.version) }}
           </el-button>
         </template>
       </el-table-column>
@@ -133,18 +142,25 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { getVersions, syncVersions, switchVersion, type VersionInfo } from '../api/version-manager'
 import { marked } from 'marked'
 import { renderSafeMarkdown } from '../utils/safe-content.mjs'
+import { compareOpenClawVersions, parseOpenClawVersion } from '../utils/openclaw-version.mjs'
 
 marked.setOptions({ breaks: true })
 
 const props = withDefaults(defineProps<{
   visible: boolean
   currentVersion?: string
+  latestVersion?: string
+  updateAvailable?: boolean
 }>(), {
-  currentVersion: ''
+  currentVersion: '',
+  latestVersion: '',
+  updateAvailable: false,
 })
 
 const emit = defineEmits<{
   'update:visible': [value: boolean]
+  'refresh-update-status': []
+  'version-changed': [version: string]
 }>()
 
 const dialogVisible = computed({
@@ -176,6 +192,26 @@ const renderedDescription = computed(() => {
   return renderSafeMarkdown(selectedVersion.value.description, source => marked.parse(source, { async: false }) as string)
 })
 const versionDetailSections = computed(() => buildVersionDetailSections(selectedVersion.value?.description || ''))
+
+function isCurrentVersion(version: string): boolean {
+  return Boolean(parseOpenClawVersion(version) && parseOpenClawVersion(props.currentVersion))
+    && compareOpenClawVersions(version, props.currentVersion) === 0
+}
+
+function isLatestUpdate(version: string): boolean {
+  return props.updateAvailable
+    && compareOpenClawVersions(version, props.latestVersion) === 0
+    && compareOpenClawVersions(version, props.currentVersion) > 0
+}
+
+function isPrereleaseVersion(row: VersionInfo): boolean {
+  return row.prerelease === true || Boolean(parseOpenClawVersion(row.version)?.prerelease)
+}
+
+function versionActionLabel(version: string): string {
+  const parsed = parseOpenClawVersion(version)
+  return parsed && !parsed.prerelease && compareOpenClawVersions(version, props.currentVersion) > 0 ? '更新' : '切换'
+}
 
 // 计算表格高度
 function calculateTableHeight(): void {
@@ -253,6 +289,7 @@ async function handleSync(): Promise<void> {
     if (result.success) {
       ElMessage.success(`同步成功，共 ${result.count} 个版本（来源：${result.source}）`)
       await loadVersions()
+      emit('refresh-update-status')
     } else {
       ElMessage.error('同步失败')
     }
@@ -264,11 +301,14 @@ async function handleSync(): Promise<void> {
 }
 
 async function handleSwitch(version: string): Promise<void> {
+  const parsedVersion = parseOpenClawVersion(version)
+  const isUpdate = Boolean(parsedVersion && !parsedVersion.prerelease)
+    && compareOpenClawVersions(version, props.currentVersion) > 0
   try {
     await ElMessageBox.confirm(
-      `确认切换到版本 ${version}？切换后网关将自动重启，Dashboard 会短暂断开。`,
-      '确认切换版本',
-      { confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning' }
+      `确认${isUpdate ? '更新' : '切换'}到版本 ${version}？完成后 OpenClaw 网关将自动重启，工作台会短暂断开。`,
+      `确认${isUpdate ? '更新' : '切换'} OpenClaw`,
+      { confirmButtonText: `确认${isUpdate ? '更新' : '切换'}`, cancelButtonText: '取消', type: 'warning' }
     )
 
     switching.value = version
@@ -287,9 +327,11 @@ async function handleSwitch(version: string): Promise<void> {
             ElMessage.info('Dashboard 正在重连，请稍后刷新')
           }
         }, 3000)
+        emit('version-changed', version)
       } else {
         ElMessage.success(result.message || '切换成功')
         await loadVersions()
+        emit('version-changed', version)
       }
     } else {
       ElMessage.error(result.error || result.message || '切换失败')
@@ -573,6 +615,49 @@ onUnmounted(() => {
 .last-sync {
   font-size: 13px;
   color: var(--text-secondary, #98989d);
+}
+
+.update-available-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 159, 10, 0.38);
+  border-radius: 9px;
+  background: rgba(255, 159, 10, 0.09);
+}
+
+.update-available-banner > div {
+  display: grid;
+  gap: 4px;
+}
+
+.update-available-banner strong { color: #ffb340; font-size: 14px; }
+.update-available-banner span { color: var(--text-secondary, #98989d); font-size: 12px; }
+
+.latest-version-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 159, 10, 0.16);
+  color: #ffb340;
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.prerelease-version-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(142, 142, 147, 0.16);
+  color: var(--text-secondary, #98989d);
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: middle;
 }
 
 /* 版本切换进度条 */

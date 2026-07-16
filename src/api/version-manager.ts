@@ -6,6 +6,18 @@ export interface VersionInfo {
   description: string
   publishedAt: string
   htmlUrl: string
+  prerelease?: boolean
+}
+
+export interface OpenClawUpdateStatus {
+  currentVersion: string
+  latestVersion: string
+  updateAvailable: boolean
+  checkedAt: string
+  lastSync: string | null
+  source: string | null
+  stale?: boolean
+  error?: string
 }
 
 export async function getVersions(page = 1, pageSize = 10) {
@@ -39,4 +51,9 @@ export async function switchVersion(version: string) {
 export async function getCurrentVersion() {
   const resp = await axios.get('/api/system/version', { timeout: 10000 })
   return resp.data as { version: string }
+}
+
+export async function getOpenClawUpdateStatus() {
+  const resp = await axios.get('/api/system/openclaw-update-status', { timeout: 65000 })
+  return resp.data as OpenClawUpdateStatus
 }

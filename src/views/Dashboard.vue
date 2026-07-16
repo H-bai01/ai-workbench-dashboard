@@ -19,11 +19,16 @@
         <div class="status-top-right">
           <!-- 版本 -->
           <div class="top-control-slot" :style="{ order: topBarControlOrder('version') }">
-            <el-tooltip content="点击切换 OpenClaw 版本" placement="bottom">
-              <button class="top-indicator top-indicator-version" @click="versionDialogVisible = true">
+            <el-tooltip :content="openClawUpdateTooltip" placement="bottom">
+              <button
+                class="top-indicator top-indicator-version"
+                :class="{ 'has-update': openClawUpdateAvailable }"
+                @click="versionDialogVisible = true"
+              >
                 <el-icon :size="13"><Box /></el-icon>
-                <span class="top-ind-label">OpenClaw 版本</span>
-                <span class="top-ind-value mono">{{ store.gatewayVersion || '未知' }}</span>
+                <span class="top-ind-label">{{ openClawUpdateAvailable ? 'OpenClaw 可更新' : 'OpenClaw 版本' }}</span>
+                <span class="top-ind-value mono">{{ openClawVersionDisplay }}</span>
+                <span v-if="openClawUpdateAvailable" class="version-update-badge">更新</span>
               </button>
             </el-tooltip>
           </div>
@@ -929,7 +934,14 @@
     />
 
     <!-- Version Dialog (REC-068) -->
-    <VersionDialog v-model:visible="versionDialogVisible" :current-version="store.gatewayVersion || ''" />
+    <VersionDialog
+      v-model:visible="versionDialogVisible"
+      :current-version="store.gatewayVersion || ''"
+      :latest-version="openClawLatestVersion"
+      :update-available="openClawUpdateAvailable"
+      @refresh-update-status="checkOpenClawUpdate"
+      @version-changed="handleOpenClawVersionChanged"
+    />
 
     <!-- Skills Dialog (REC-005) -->
     <SkillsDialog v-model:visible="skillsDialogVisible" />
@@ -1147,6 +1159,7 @@ import { createProjectTokenScope, normalizeProjectPath, projectFolderName } from
 import type { ProjectTokenScope } from '../types/project-token-scope'
 import type { SessionObservationScope } from '../types/session-observation'
 import type { NotificationItem } from '../utils/notification-center.mjs'
+import { getOpenClawUpdateStatus, type OpenClawUpdateStatus } from '../api/version-manager'
 import {
   Monitor,
   CircleCheck,
@@ -1330,6 +1343,78 @@ watch(tokenDetailVisible, (isVisible) => {
 
 // Version dialog
 const versionDialogVisible = ref(false)
+const openClawUpdateStatus = ref<OpenClawUpdateStatus | null>(null)
+const openClawLatestVersion = computed(() => openClawUpdateStatus.value?.latestVersion || '')
+const openClawUpdateAvailable = computed(() => openClawUpdateStatus.value?.updateAvailable === true)
+const openClawVersionDisplay = computed(() => {
+  const current = store.gatewayVersion || openClawUpdateStatus.value?.currentVersion || '未知'
+  return openClawUpdateAvailable.value ? `${current} → ${openClawLatestVersion.value}` : current
+})
+const openClawUpdateTooltip = computed(() => openClawUpdateAvailable.value
+  ? `可更新至 ${openClawLatestVersion.value}，点击查看并更新`
+  : '点击查看 OpenClaw 版本')
+const OPENCLAW_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
+let openClawUpdateTimer: ReturnType<typeof setInterval> | null = null
+
+function hasNotificationCode(code: string): boolean {
+  return store.notifications.some(item => item.errorCode === code)
+}
+
+async function checkOpenClawUpdate(): Promise<void> {
+  try {
+    const status = await getOpenClawUpdateStatus()
+    openClawUpdateStatus.value = status
+    if (status.updateAvailable && status.latestVersion) {
+      const code = `openclaw_update_available_${status.latestVersion.replace(/[^0-9A-Za-z]+/g, '_')}`
+      if (!hasNotificationCode(code)) {
+        store.addNotification({
+          type: 'info',
+          agentId: 'openclaw-update',
+          agentName: 'OpenClaw 更新',
+          message: `发现新版本 ${status.latestVersion}`,
+          source: 'OpenClaw 版本检查',
+          detail: `当前版本 ${status.currentVersion || store.gatewayVersion || '未知'}，可更新至 ${status.latestVersion}。`,
+          errorCode: code,
+          impact: '当前版本可继续使用，不会自动更新。',
+          currentResult: '点击顶部“OpenClaw 可更新”即可查看并手动更新。',
+        })
+      }
+    } else if (status.error && !hasNotificationCode('openclaw_update_check_failed')) {
+      store.addNotification({
+        type: 'error',
+        agentId: 'openclaw-update',
+        agentName: 'OpenClaw 更新',
+        message: 'OpenClaw 更新检查失败',
+        source: 'OpenClaw 版本检查',
+        detail: status.error,
+        errorCode: 'openclaw_update_check_failed',
+        impact: '暂时无法判断是否存在新版本。',
+        currentResult: '当前 OpenClaw 和工作台可继续使用。',
+      })
+    }
+  } catch {
+    if (!hasNotificationCode('openclaw_update_check_failed')) {
+      store.addNotification({
+        type: 'error',
+        agentId: 'openclaw-update',
+        agentName: 'OpenClaw 更新',
+        message: 'OpenClaw 更新检查失败',
+        source: 'OpenClaw 版本检查',
+        detail: '工作台未能完成版本检查请求。',
+        errorCode: 'openclaw_update_check_failed',
+        impact: '暂时无法判断是否存在新版本。',
+        currentResult: '当前 OpenClaw 和工作台可继续使用。',
+      })
+    }
+  }
+}
+
+function handleOpenClawVersionChanged(): void {
+  window.setTimeout(async () => {
+    await store.fetchHealth()
+    await checkOpenClawUpdate()
+  }, 3000)
+}
 
 // Skills dialog (REC-005)
 const skillsDialogVisible = ref(false)
@@ -3503,7 +3588,7 @@ function handlePaletteNavigateAgent(agentId: string) {
 }
 
 onMounted(() => {
-  refreshAll()
+  void refreshAll().then(() => checkOpenClawUpdate())
   store.subscribeAgents()
   // Start real-time clock
   updateClock()
@@ -3526,6 +3611,7 @@ onMounted(() => {
     void prewarmTokenUsageRanges()
   }, TOKEN_USAGE_PREWARM_INTERVAL_MS)
   localAiStatusTimer = setInterval(fetchLocalAiStatus, 5 * 1000)
+  openClawUpdateTimer = setInterval(() => void checkOpenClawUpdate(), OPENCLAW_UPDATE_CHECK_INTERVAL_MS)
   // Sprint 7: cmd+K
   window.addEventListener('keydown', onGlobalKeydown)
 })
@@ -3540,6 +3626,10 @@ onUnmounted(() => {
   if (clockTimer) {
     clearInterval(clockTimer)
     clockTimer = null
+  }
+  if (openClawUpdateTimer) {
+    clearInterval(openClawUpdateTimer)
+    openClawUpdateTimer = null
   }
   // REC-031: 清理工作流轮询定时器
   if (workflowTimer) {
@@ -3745,6 +3835,21 @@ onUnmounted(() => {
 .top-indicator-version .el-icon { color: #6cb2ff; }
 .top-indicator-version .top-ind-value { color: #6cb2ff; }
 .top-indicator-version:hover { border-color: rgba(10, 132, 255,0.42); box-shadow: 0 6px 18px rgba(10, 132, 255,0.12); }
+.top-indicator-version.has-update {
+  border-color: rgba(255, 159, 10, 0.55);
+  background: rgba(255, 159, 10, 0.12);
+}
+.top-indicator-version.has-update .el-icon,
+.top-indicator-version.has-update .top-ind-value { color: #ffb340; }
+.version-update-badge {
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: #ff9f0a;
+  color: #17130b;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 15px;
+}
 
 /* 网关健康 */
 .top-indicator-healthy { border-color: rgba(48, 209, 88,0.22); background: rgba(48, 209, 88,0.1); }

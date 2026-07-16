@@ -83,6 +83,7 @@ import {
 import { createSessionObservationStore } from './session-observation.mjs'
 import { GPT56_BILLING_MODELS, mergeBillingConfigWithDefaults, mergePriceStatus } from './billing-config.mjs'
 import { installPrivacyConsole, installProcessErrorPrivacy } from '../src/utils/log-privacy.mjs'
+import { createOpenClawUpdateStatus } from '../src/utils/openclaw-version.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -1313,6 +1314,7 @@ const VERSIONS_CACHE_PATH = path.join(__dirname, '..', 'public', 'versions-cache
 // 并发锁：防止并发操作
 let syncingVersions = false
 let switchingVersion = false
+const VERSION_SYNC_TTL_MS = 6 * 60 * 60 * 1000
 
 /**
  * 读取版本缓存文件
@@ -1336,6 +1338,39 @@ async function writeVersionsCache(data) {
   await fs.mkdir(dir, { recursive: true })
   await fs.writeFile(tmpPath, JSON.stringify(data, null, 2), 'utf-8')
   await fs.rename(tmpPath, VERSIONS_CACHE_PATH)
+}
+
+function isVersionsCacheFresh(cache, now = Date.now()) {
+  const lastSync = Date.parse(cache?.lastSync || '')
+  return Number.isFinite(lastSync) && now - lastSync >= 0 && now - lastSync < VERSION_SYNC_TTL_MS
+}
+
+async function refreshVersionsCache() {
+  const result = await fetchReleasesFromGitHub()
+  const existingCache = await readVersionsCache()
+  const existingVersions = Array.isArray(existingCache.versions) ? existingCache.versions : []
+  const remoteVersions = Array.isArray(result.versions) ? result.versions : []
+  const remoteNames = new Set(remoteVersions.map(item => item.version))
+  const newVersions = remoteVersions.filter(item => !existingVersions.some(existing => existing.version === item.version))
+  const mergedVersions = [
+    ...remoteVersions,
+    ...existingVersions.filter(item => !remoteNames.has(item.version)),
+  ].sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0))
+  const cacheData = {
+    lastSync: new Date().toISOString(),
+    source: result.source,
+    versions: mergedVersions,
+  }
+  await writeVersionsCache(cacheData)
+  return { ...cacheData, added: newVersions.length }
+}
+
+async function currentOpenClawVersion() {
+  const runtimeVersion = readGatewayServiceVersion()
+  if (runtimeVersion?.version) return runtimeVersion.version
+  const versionCommand = os.platform() === 'win32' ? 'openclaw.cmd' : 'openclaw'
+  const result = await runCommand(versionCommand, ['-v'], 10000)
+  return result.success ? parseVersion(result.stdout) : ''
 }
 
 /**
@@ -5890,6 +5925,53 @@ export const server = http.createServer(async (req, res) => {
   }
 
   // ============================================
+  // GET /api/system/openclaw-update-status — 后台检查可用的稳定版本
+  // ============================================
+
+  if (pathname === '/api/system/openclaw-update-status' && req.method === 'GET') {
+    let cache = await readVersionsCache()
+    let checkError = ''
+    let stale = !isVersionsCacheFresh(cache)
+
+    if (stale && !syncingVersions) {
+      syncingVersions = true
+      try {
+        cache = await refreshVersionsCache()
+        stale = false
+      } catch {
+        checkError = '无法获取最新 OpenClaw 版本'
+      } finally {
+        syncingVersions = false
+      }
+    }
+
+    try {
+      const currentVersion = await currentOpenClawVersion()
+      const status = createOpenClawUpdateStatus(currentVersion, cache.versions || [], {
+        checkedAt: new Date().toISOString(),
+        lastSync: cache.lastSync || null,
+        source: cache.source || null,
+        stale,
+      })
+      const { latestRelease: _latestRelease, ...payload } = status
+      if (checkError) payload.error = checkError
+      sendJson(res, 200, payload)
+    } catch {
+      sendJson(res, 200, {
+        currentVersion: '',
+        latestVersion: '',
+        updateAvailable: false,
+        checkedAt: new Date().toISOString(),
+        lastSync: cache.lastSync || null,
+        source: cache.source || null,
+        stale: true,
+        error: '无法检查 OpenClaw 更新',
+      })
+    }
+    return
+  }
+
+  // ============================================
   // POST /api/system/sync-versions — 同步版本列表
   // ============================================
 
@@ -5902,33 +5984,14 @@ export const server = http.createServer(async (req, res) => {
 
     syncingVersions = true
     try {
-      const result = await fetchReleasesFromGitHub()
-
-      // 增量合并：读取现有缓存 → 按 tag_name 去重合并 → 写回
-      const existingCache = await readVersionsCache()
-      const existingTags = new Set((existingCache.versions || []).map(v => v.version))
-
-      // 新版本追加到开头，已存在版本保留
-      const newVersions = result.versions.filter(v => !existingTags.has(v.version))
-      const mergedVersions = [...result.versions, ...(existingCache.versions || []).filter(v => !result.versions.some(r => r.version === v.version))]
-
-      // 按 published_at 降序排列
-      mergedVersions.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt))
-
-      const cacheData = {
-        lastSync: new Date().toISOString(),
-        source: result.source,
-        versions: mergedVersions
-      }
-
-      await writeVersionsCache(cacheData)
+      const cacheData = await refreshVersionsCache()
 
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({
         success: true,
-        count: mergedVersions.length,
-        added: newVersions.length,
-        source: result.source
+        count: cacheData.versions.length,
+        added: cacheData.added,
+        source: cacheData.source
       }))
     } catch (error) {
       console.error('[Version Sync] 同步失败:', error.message)
