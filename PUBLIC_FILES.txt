@@ -1,6 +1,5 @@
 .env.example
 .github/workflows/ci.yml
-.github/workflows/publish.yml
 .gitignore
 .vscode/extensions.json
 LICENSE
