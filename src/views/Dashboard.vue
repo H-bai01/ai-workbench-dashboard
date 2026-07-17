@@ -5211,17 +5211,17 @@ onUnmounted(() => {
 
 .agent-pulse-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-rows: minmax(0, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-auto-rows: minmax(62px, max-content);
   gap: 10px;
   flex: 1;
-  align-content: stretch;
+  align-content: start;
   min-height: 0;
   overflow: hidden;
 }
 
 .agent-pulse-grid--two-level {
-  grid-auto-rows: minmax(62px, auto);
+  grid-auto-rows: minmax(62px, max-content);
   max-height: 300px;
   overflow-y: auto;
   padding-right: 4px;
@@ -5249,7 +5249,7 @@ onUnmounted(() => {
   align-items: center;
   text-align: left;
   padding: 9px 12px;
-  min-height: 0;
+  min-height: 62px;
   border-radius: 10px;
   border: 1px solid rgba(235, 235, 245, 0.12);
   background: rgba(255, 255, 255, 0.048);
@@ -5257,6 +5257,10 @@ onUnmounted(() => {
   font-family: inherit;
   cursor: pointer;
   transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.agent-pulse-item:only-child {
+  grid-column: 1 / -1;
 }
 
 .agent-pulse-item.is-local-source {
@@ -6440,7 +6444,7 @@ onUnmounted(() => {
 
 @media (max-width: 1024px) {
   .agent-pulse-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   }
 
   .board-container {
