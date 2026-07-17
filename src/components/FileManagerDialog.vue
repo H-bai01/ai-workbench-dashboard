@@ -11,8 +11,8 @@
       <aside class="root-panel">
         <div class="panel-heading">
           <div>
-            <strong>管理目录</strong>
-            <p>Agent 工作目录和手动添加的目录</p>
+            <strong>工作目录</strong>
+            <p>AI 工具正在使用的目录和我的目录</p>
           </div>
           <el-button type="primary" size="small" :loading="addingRoot" @click="addRoot">
             添加目录
@@ -20,33 +20,53 @@
         </div>
 
         <div v-if="loadingRoots" class="empty-state">正在识别目录…</div>
-        <div v-else-if="roots.length === 0" class="empty-state">
-          暂未识别到 Agent 工作目录，可手动添加。
-        </div>
         <div v-else class="root-list">
-          <button
-            v-for="root in roots"
-            :key="root.id + root.path"
-            type="button"
-            class="root-item"
-            :class="{ active: activeRoot?.path === root.path }"
-            @click="openRoot(root)"
-          >
-            <el-icon><Folder /></el-icon>
-            <span class="root-copy">
-              <strong>{{ root.name }}</strong>
-              <small>{{ root.source === 'agent' ? 'Agent 工作目录' : '手动添加' }}</small>
-              <small class="mono">{{ root.path }}</small>
-            </span>
-            <el-button
-              v-if="root.source === 'manual'"
-              class="remove-root"
-              type="danger"
-              link
-              size="small"
-              @click.stop="removeRoot(root)"
-            >移除</el-button>
-          </button>
+          <section class="root-section">
+            <div class="root-section-title">AI 工作目录</div>
+            <div v-if="aiRoots.length === 0" class="root-section-empty">暂未识别到 AI 工作目录</div>
+            <button
+              v-for="root in aiRoots"
+              :key="root.id + root.path"
+              type="button"
+              class="root-item"
+              :class="{ active: activeRoot?.path === root.path }"
+              @click="openRoot(root)"
+            >
+              <el-icon><Folder /></el-icon>
+              <span class="root-copy">
+                <strong>{{ root.name }}</strong>
+                <small>{{ sourceLabel(root) }}</small>
+                <small class="mono">{{ root.path }}</small>
+              </span>
+            </button>
+          </section>
+
+          <section class="root-section">
+            <div class="root-section-title">我的目录</div>
+            <div v-if="manualRoots.length === 0" class="root-section-empty">可使用“添加目录”补充工作目录</div>
+            <button
+              v-for="root in manualRoots"
+              :key="root.id + root.path"
+              type="button"
+              class="root-item"
+              :class="{ active: activeRoot?.path === root.path }"
+              @click="openRoot(root)"
+            >
+              <el-icon><Folder /></el-icon>
+              <span class="root-copy">
+                <strong>{{ root.name }}</strong>
+                <small>手动添加</small>
+                <small class="mono">{{ root.path }}</small>
+              </span>
+              <el-button
+                class="remove-root"
+                type="danger"
+                link
+                size="small"
+                @click.stop="removeRoot(root)"
+              >移除</el-button>
+            </button>
+          </section>
         </div>
       </aside>
 
@@ -160,8 +180,14 @@ interface FileRoot {
   id: string
   name: string
   path: string
-  source: 'agent' | 'manual'
-  agentId?: string
+  source: 'ai' | 'manual'
+  sources?: Array<{
+    toolId: string
+    toolName: string
+    contextId?: string
+    contextName?: string
+    contextType?: 'agent' | 'project'
+  }>
 }
 
 interface FileEntry {
@@ -192,6 +218,8 @@ const visible = computed({
 })
 
 const roots = ref<FileRoot[]>([])
+const aiRoots = computed(() => roots.value.filter(root => root.source === 'ai'))
+const manualRoots = computed(() => roots.value.filter(root => root.source === 'manual'))
 const activeRoot = ref<FileRoot | null>(null)
 const currentPath = ref('')
 const entries = ref<FileEntry[]>([])
@@ -234,6 +262,13 @@ function jsonPost(body: Record<string, unknown> = {}): RequestInit {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   }
+}
+
+function sourceLabel(root: FileRoot) {
+  const labels = (root.sources || []).map(source => (
+    source.contextName ? `${source.toolName} · ${source.contextName}` : source.toolName
+  ))
+  return [...new Set(labels)].join('、') || 'AI 工作目录'
 }
 
 function failure(action: string, error: unknown, target = selected.value?.path || currentPath.value) {
@@ -504,7 +539,10 @@ function formatTime(value?: number) {
 .root-panel { padding: 16px; border-right: 1px solid var(--el-border-color); background: rgba(255,255,255,.02); }
 .panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
 .panel-heading p, .detail-heading p { margin: 4px 0 0; color: var(--el-text-color-secondary); font-size: 12px; }
-.root-list { display: flex; flex-direction: column; gap: 8px; }
+.root-list { display: flex; flex-direction: column; gap: 16px; }
+.root-section { display: flex; flex-direction: column; gap: 8px; }
+.root-section-title { color: var(--el-text-color-secondary); font-size: 12px; font-weight: 700; letter-spacing: .04em; }
+.root-section-empty { padding: 10px 6px; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.5; }
 .root-item { width: 100%; display: flex; align-items: flex-start; gap: 9px; padding: 11px; border: 1px solid var(--el-border-color); border-radius: 9px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
 .root-item:hover, .root-item.active { border-color: var(--el-color-primary); background: rgba(64,158,255,.10); }
 .root-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }

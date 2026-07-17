@@ -600,18 +600,75 @@ function applyCodexProcessFallback(statuses, processes, now) {
   return statuses
 }
 
-function getDashboardFileRoots() {
-  const roots = [
-    ...getConfiguredOpenClawAgents().map(agent => agent.workspace).filter(Boolean),
-    ...readManualFileRoots({ stateDir: OPENCLAW_DIR }),
-  ]
+const FILE_MANAGER_ROOT_CACHE_MS = 15_000
+let fileManagerRootCache = { at: 0, roots: [] }
 
-  const unique = []
-  for (const root of roots) {
-    const resolved = path.resolve(root)
-    if (!unique.some(existing => existing === resolved)) unique.push(resolved)
+function isInternalObservedWorkspace(source, workspacePath) {
+  if (!workspacePath || path.resolve(workspacePath) === path.parse(path.resolve(workspacePath)).root) return true
+  if (path.resolve(workspacePath) === path.resolve(HOME_DIR)) return true
+  const internalRoot = source === 'codex'
+    ? path.join(HOME_DIR, '.codex')
+    : source === 'claude-code'
+      ? path.join(HOME_DIR, '.claude')
+      : ''
+  return Boolean(internalRoot && isPathInside(workspacePath, internalRoot))
+}
+
+function collectAiWorkspaceRecords() {
+  const agents = getConfiguredOpenClawAgents()
+  const agentNames = new Map(agents.map(agent => [String(agent.id || ''), String(agent.name || agent.id || '')]))
+  const records = agents
+    .filter(agent => agent.workspace)
+    .map(agent => ({
+      path: agent.workspace,
+      toolId: 'openclaw',
+      toolName: 'OpenClaw',
+      contextId: agent.id,
+      contextName: agent.name || agent.id,
+      contextType: 'agent',
+    }))
+
+  let observed = []
+  try {
+    observed = SESSION_OBSERVATION_STORE.indexSnapshot()
+  } catch {
+    observed = []
   }
-  return unique
+  for (const entry of observed) {
+    if (!entry.projectPath || isInternalObservedWorkspace(entry.source, entry.projectPath)) continue
+    records.push({
+      path: entry.projectPath,
+      toolId: entry.source,
+      toolName: entry.clientName || 'AI 工具',
+      contextId: entry.source === 'openclaw' ? entry.agentId : entry.projectKey,
+      contextName: entry.source === 'openclaw' ? (agentNames.get(entry.agentId) || entry.agentId) : '',
+      contextType: entry.source === 'openclaw' ? 'agent' : 'project',
+    })
+  }
+  return records
+}
+
+function invalidateFileManagerRoots() {
+  fileManagerRootCache = { at: 0, roots: [] }
+}
+
+function currentFileManagerRoots({ force = false } = {}) {
+  const now = Date.now()
+  if (!force && fileManagerRootCache.roots.length && now - fileManagerRootCache.at < FILE_MANAGER_ROOT_CACHE_MS) {
+    return fileManagerRootCache.roots
+  }
+  const roots = discoverFileManagerRoots({
+    aiWorkspaces: collectAiWorkspaceRecords(),
+    manualRoots: readManualFileRoots({ stateDir: OPENCLAW_DIR }),
+  })
+  fileManagerRootCache = { at: now, roots }
+  return roots
+}
+
+function getDashboardFileRoots() {
+  // 保留配置中合法的路径别名（例如 macOS 的 /var → /private/var），
+  // 同时让路径边界模块以真实目录作为最终落点。
+  return currentFileManagerRoots().flatMap(root => [...(root.aliases || []), root.path])
 }
 
 function getOpenClawProjectRoots() {
@@ -7304,13 +7361,6 @@ export const server = http.createServer(async (req, res) => {
   const fileManagerSelections = server.fileManagerSelections || new Map()
   server.fileManagerSelections = fileManagerSelections
 
-  function currentFileManagerRoots() {
-    return discoverFileManagerRoots({
-      agents: getConfiguredOpenClawAgents(),
-      manualRoots: readManualFileRoots({ stateDir: OPENCLAW_DIR }),
-    })
-  }
-
   // 文件接口只操作自动识别或用户确认添加的根目录。
   function resolveSafePath(p, { mustExist = false } = {}) {
     if (!p || typeof p !== 'string') throw new Error('invalid path')
@@ -7319,7 +7369,9 @@ export const server = http.createServer(async (req, res) => {
 
   function assertMutableFileManagerPath(filePath) {
     const resolved = resolveSafePath(filePath, { mustExist: true })
-    const isRoot = currentFileManagerRoots().some(root => path.resolve(root.path) === path.resolve(resolved))
+    const isRoot = currentFileManagerRoots().some(root => (
+      [root.path, ...(root.aliases || [])].some(candidate => path.resolve(candidate) === path.resolve(resolved))
+    ))
     if (isRoot) throw new Error('不能修改文件管理根目录本身')
     return resolved
   }
@@ -7396,86 +7448,16 @@ export const server = http.createServer(async (req, res) => {
     return selected.path
   }
 
-  function fileItem(filePath, cn, desc, usedBy = [], extra = {}) {
-    return {
-      path: displayUserPath(filePath),
-      cn,
-      desc,
-      usedBy,
-      ...extra,
-      sensitive: false,
-    }
-  }
-
-  function buildAgentWorkspaceGroup(agent) {
-    if (!agent.workspace) return null
-    const root = agent.workspace
-    const usedBy = [agent.name || agent.id]
-    return {
-      name: `${agent.name || agent.id} 工作空间`,
-      items: [
-        fileItem(root, `${agent.name || agent.id} 工作空间`, '该 Agent 的真实工作目录', usedBy, { isDir: true }),
-        fileItem(path.join(root, 'IDENTITY.md'), '身份卡', 'Agent 的身份、名字、角色和行为设定', usedBy),
-        fileItem(path.join(root, 'SOUL.md'), '灵魂书', 'Agent 的核心原则和长期风格设定', usedBy),
-        fileItem(path.join(root, 'USER.md'), '用户偏好', 'Agent 读取的用户偏好和工作习惯', usedBy),
-        fileItem(path.join(root, 'AGENTS.md'), '工作规则', '该工作空间内的协作规则', usedBy),
-        fileItem(path.join(root, 'TOOLS.md'), '工具注记', '该 Agent 可用工具和注意事项', usedBy),
-        fileItem(path.join(root, 'HEARTBEAT.md'), '心跳清单', 'Agent 的待处理事项或心跳任务', usedBy),
-        fileItem(path.join(root, 'MEMORY.md'), '长期记忆', '该 Agent 的长期记忆文件', usedBy),
-        fileItem(path.join(root, 'openclaw-workspace-state.json'), '工作空间状态', 'OpenClaw 记录的工作空间状态', usedBy),
-      ],
-    }
-  }
-
-  /** 文件清单（按当前机器自动发现 OpenClaw 配置 + 谁在用） */
-  function buildFileManifest() {
-    const agents = getConfiguredOpenClawAgents()
-    const workspaceGroups = agents.map(buildAgentWorkspaceGroup).filter(Boolean)
-    const categories = []
-    if (workspaceGroups.length > 0) {
-      categories.push({
-        name: 'Agent 工作空间',
-        rootDesc: '从本机安全配置读取；不同电脑会显示各自真实的 Agent 工作目录',
-        groups: workspaceGroups,
-      })
-    }
-
-    return categories
-  }
-
-  // 给清单填充实时元数据（大小、存在、mtime）
-  function enrichManifest() {
-    return buildFileManifest().map(cat => ({
-      ...cat,
-      groups: cat.groups.map(g => ({
-        ...g,
-        items: g.items.map(item => {
-          try {
-            const real = resolveSafePath(item.path, { mustExist: true })
-            const stat = fsSync.statSync(real)
-            return {
-              ...item,
-              exists: true,
-              isDir: stat.isDirectory(),
-              size: stat.isFile() ? stat.size : null,
-              entries: stat.isDirectory() ? (fsSync.readdirSync(real).length) : null,
-              mtime: stat.mtimeMs,
-            }
-          } catch (e) {
-            return { ...item, exists: false }
-          }
-        }),
-      })),
-    }))
-  }
-
   if (pathname === '/api/file-manager/tree' && req.method === 'GET') {
     try {
-      const roots = currentFileManagerRoots().map(root => ({
-        ...root,
-        path: displayUserPath(root.path),
-      }))
-      sendJson(res, 200, { ok: true, roots, categories: enrichManifest() })
+      const roots = currentFileManagerRoots({ force: true }).map(root => {
+        const { aliases: _aliases, ...publicRoot } = root
+        return {
+          ...publicRoot,
+          path: displayUserPath(root.path),
+        }
+      })
+      sendJson(res, 200, { ok: true, roots })
     } catch (e) {
       sendJson(res, 500, { ok: false, error: e.message })
     }
@@ -7494,6 +7476,7 @@ export const server = http.createServer(async (req, res) => {
       const real = fsSync.realpathSync.native(selectedPath)
       const roots = readManualFileRoots({ stateDir: OPENCLAW_DIR })
       writeManualFileRoots({ stateDir: OPENCLAW_DIR, roots: [...roots, real] })
+      invalidateFileManagerRoots()
       sendJson(res, 200, { ok: true, root: { path: displayUserPath(real), name: path.basename(real), source: 'manual' } })
     } catch (e) {
       sendJson(res, 400, { ok: false, error: e.message })
@@ -7508,6 +7491,7 @@ export const server = http.createServer(async (req, res) => {
       const manualRoots = readManualFileRoots({ stateDir: OPENCLAW_DIR })
       if (!manualRoots.some(root => path.resolve(root) === path.resolve(target))) throw new Error('只能移除手动添加的目录')
       writeManualFileRoots({ stateDir: OPENCLAW_DIR, roots: manualRoots.filter(root => path.resolve(root) !== path.resolve(target)) })
+      invalidateFileManagerRoots()
       sendJson(res, 200, { ok: true })
     } catch (e) {
       sendJson(res, 400, { ok: false, error: e.message })

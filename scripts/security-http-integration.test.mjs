@@ -379,8 +379,10 @@ test('同源代理注入本地 token，合法功能不再误报 401', async () =
     electricityPerHour: 0,
   })
 
+  const fileRoots = await request(frontendPort, '/api/file-manager/tree')
+  assert.equal(fileRoots.status, 200, fileRoots.body)
   const readFile = await request(frontendPort, '/api/file-manager/read', sameOriginJson({ path: memoryFile }))
-  assert.equal(readFile.status, 200)
+  assert.equal(readFile.status, 200, `${fileRoots.body}\n${readFile.body}`)
   assert.match(readFile.body, /临时测试/)
 })
 
@@ -521,7 +523,7 @@ test('文件管理允许工作目录操作并拒绝越界与符号链接', async
   }
 
   const write = await request(frontendPort, '/api/file-manager/write', sameOriginJson({ path: untouched, content: '# safe\n' }))
-  assert.equal(write.status, 200)
+  assert.equal(write.status, 200, write.body)
   assert.equal(fs.readFileSync(untouched, 'utf8'), '# safe\n')
   assert.equal(fs.readFileSync(outsideFile, 'utf8'), 'outside-unchanged')
 
@@ -534,7 +536,13 @@ test('文件管理允许工作目录操作并拒绝越界与符号链接', async
   const tree = await request(frontendPort, '/api/file-manager/tree')
   assert.equal(tree.status, 200)
   assert.equal(tree.body.includes(gatewaySecret), false)
-  assert.match(tree.body, /Agent 工作目录/)
+  const treePayload = JSON.parse(tree.body)
+  const sharedRoot = treePayload.roots.find(root => root.path.endsWith('/workspace with spaces/测试项目'))
+  assert.equal(sharedRoot.source, 'ai')
+  assert.deepEqual(
+    [...new Set(sharedRoot.sources.map(source => source.toolName))].sort(),
+    ['Codex', 'OpenClaw'],
+  )
 
   const renamed = path.join(workspace, 'managed-renamed.md')
   const rename = await request(frontendPort, '/api/file-manager/rename', sameOriginJson({ path: untouched, name: path.basename(renamed) }))

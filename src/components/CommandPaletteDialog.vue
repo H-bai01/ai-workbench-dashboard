@@ -192,7 +192,7 @@ const ACTIONS = [
   { key: 'projects',    icon: Grid,        label: 'OpenClaw 项目看板', desc: '5列 Kanban 跟踪 OpenClaw 项目进度' },
   { key: 'cron',        icon: Timer,       label: '定时任务',    desc: 'Cron 任务中心' },
   { key: 'timeline',   icon: DataLine,    label: 'OpenClaw 活动时间线', desc: '查看 Agent session Gantt 图' },
-  { key: 'fileManager',icon: Folder,      label: '文件管理',    desc: '管理 Agent 工作目录和手动添加的目录' },
+  { key: 'fileManager',icon: Folder,      label: '文件管理',    desc: '管理 AI 工作目录和我的目录' },
   { key: 'billing',    icon: Money,       label: '计费配置',    desc: '设置 OpenClaw / Codex / Claude Code 模型计费率' },
   { key: 'skills',     icon: SuitcaseLine,label: 'OpenClaw 技能库', desc: '查看所有 Agent 技能' },
   { key: 'gpu',        icon: Odometer,    label: 'GPU 显存',    desc: '查看 GPU 显存占用' },

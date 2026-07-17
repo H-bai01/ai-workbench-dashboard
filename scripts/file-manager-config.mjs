@@ -89,34 +89,93 @@ export function writeManualFileRoots({ stateDir, roots } = {}) {
   return normalized
 }
 
-export function discoverFileManagerRoots({ agents = [], manualRoots = [] } = {}) {
+function shortLabel(value, fallback = '') {
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  return (text || fallback).slice(0, 120)
+}
+
+function normalizeWorkspaceSource(value = {}) {
+  const toolId = shortLabel(value.toolId, 'ai-tool').toLowerCase()
+  const toolName = shortLabel(value.toolName, 'AI 工具')
+  const contextId = shortLabel(value.contextId)
+  const contextName = shortLabel(value.contextName)
+  return {
+    toolId,
+    toolName,
+    contextId,
+    contextName,
+    contextType: value.contextType === 'agent' ? 'agent' : 'project',
+  }
+}
+
+/**
+ * 文件管理只消费统一的 AI 工作目录记录，不感知具体 AI 产品。
+ * aiWorkspaces: [{ path, toolId, toolName, contextId?, contextName?, contextType? }]
+ */
+export function discoverFileManagerRoots({ aiWorkspaces = [], manualRoots = [], agents = [] } = {}) {
   const records = []
-  const seen = new Set()
-  const add = (candidate, record) => {
+  const byPath = new Map()
+  const addAiWorkspace = (candidate) => {
     try {
-      const real = realDirectory(candidate)
-      if (seen.has(real)) return
-      seen.add(real)
-      records.push({ ...record, path: real })
+      const alias = path.resolve(String(candidate.path || ''))
+      const real = realDirectory(candidate.path)
+      const source = normalizeWorkspaceSource(candidate)
+      let record = byPath.get(real)
+      if (!record) {
+        record = {
+          id: `ai:${real}`,
+          name: path.basename(real) || source.contextName || source.toolName,
+          source: 'ai',
+          path: real,
+          aliases: [],
+          sources: [],
+        }
+        byPath.set(real, record)
+        records.push(record)
+      }
+      const sourceKey = `${source.toolId}\0${source.contextId}\0${source.contextType}`
+      if (!record.sources.some(existing => (
+        `${existing.toolId}\0${existing.contextId}\0${existing.contextType}` === sourceKey
+      ))) {
+        record.sources.push(source)
+      }
+      if (alias !== real && !record.aliases.includes(alias)) record.aliases.push(alias)
     } catch { /* absent or unsafe root */ }
   }
 
+  // 兼容旧调用方，但立即转换为统一 AI 工作目录协议。
   for (const agent of Array.isArray(agents) ? agents : []) {
     if (!agent?.workspace) continue
-    add(agent.workspace, {
-      id: `agent:${String(agent.id || agent.name || 'unknown')}`,
-      name: String(agent.name || agent.id || 'Agent 工作目录'),
-      source: 'agent',
-      agentId: String(agent.id || ''),
+    addAiWorkspace({
+      path: agent.workspace,
+      toolId: 'openclaw',
+      toolName: 'OpenClaw',
+      contextId: agent.id,
+      contextName: agent.name || agent.id,
+      contextType: 'agent',
     })
   }
+
+  for (const workspace of Array.isArray(aiWorkspaces) ? aiWorkspaces : []) {
+    if (!workspace?.path) continue
+    addAiWorkspace(workspace)
+  }
+
   for (const manualRoot of Array.isArray(manualRoots) ? manualRoots : []) {
-    add(manualRoot, {
-      id: `manual:${records.length}`,
-      name: path.basename(String(manualRoot)) || '手动目录',
-      source: 'manual',
-      agentId: '',
-    })
+    try {
+      const real = realDirectory(manualRoot)
+      if (byPath.has(real)) continue
+      const record = {
+        id: `manual:${real}`,
+        name: path.basename(real) || '手动目录',
+        source: 'manual',
+        path: real,
+        aliases: path.resolve(String(manualRoot || '')) === real ? [] : [path.resolve(String(manualRoot || ''))],
+        sources: [],
+      }
+      byPath.set(real, record)
+      records.push(record)
+    } catch { /* absent or unsafe root */ }
   }
   return records
 }

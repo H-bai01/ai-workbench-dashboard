@@ -40,19 +40,42 @@ test('手动目录配置独立保存并过滤失效目录', () => {
   fs.rmSync(root, { recursive: true, force: true })
 })
 
-test('自动与手动目录去重并保留来源', () => {
+test('多个 AI 工具按统一协议提供工作目录并合并相同路径', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'file-manager-roots-'))
-  const first = path.join(root, 'agent')
+  const first = path.join(root, 'shared-project')
   const second = path.join(root, 'manual')
   fs.mkdirSync(first)
   fs.mkdirSync(second)
   const records = discoverFileManagerRoots({
-    agents: [{ id: 'main', name: 'Main', workspace: first }],
+    aiWorkspaces: [
+      { path: first, toolId: 'openclaw', toolName: 'OpenClaw', contextId: 'main', contextName: 'Main', contextType: 'agent' },
+      { path: first, toolId: 'codex', toolName: 'Codex', contextId: 'project-a', contextType: 'project' },
+      { path: first, toolId: 'future-ai', toolName: 'Future AI', contextId: 'project-a', contextType: 'project' },
+    ],
     manualRoots: [first, second],
   })
   assert.equal(records.length, 2)
-  assert.equal(records[0].source, 'agent')
+  assert.equal(records[0].source, 'ai')
+  assert.deepEqual(records[0].sources.map(source => source.toolName), ['OpenClaw', 'Codex', 'Future AI'])
   assert.equal(records[1].source, 'manual')
+  fs.rmSync(root, { recursive: true, force: true })
+})
+
+test('旧 Agent 输入会转换为统一 AI 工作目录记录', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'file-manager-agent-compat-'))
+  const workspace = path.join(root, 'agent')
+  fs.mkdirSync(workspace)
+  const [record] = discoverFileManagerRoots({
+    agents: [{ id: 'main', name: 'Main', workspace }],
+  })
+  assert.equal(record.source, 'ai')
+  assert.deepEqual(record.sources[0], {
+    toolId: 'openclaw',
+    toolName: 'OpenClaw',
+    contextId: 'main',
+    contextName: 'Main',
+    contextType: 'agent',
+  })
   fs.rmSync(root, { recursive: true, force: true })
 })
 

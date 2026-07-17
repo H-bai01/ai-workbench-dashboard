@@ -282,6 +282,26 @@ before(async () => {
           raw: {},
         }],
       }
+    } else if (url.pathname === '/api/file-manager/tree') {
+      body = {
+        ok: true,
+        roots: [{
+          id: 'ai:shared-project',
+          name: '共享项目',
+          path: '/tmp/shared-project',
+          source: 'ai',
+          sources: [
+            { toolId: 'codex', toolName: 'Codex', contextId: 'shared-project', contextType: 'project' },
+            { toolId: 'future-ai', toolName: 'Future AI', contextId: 'shared-project', contextType: 'project' },
+          ],
+        }, {
+          id: 'manual:notes',
+          name: '我的资料',
+          path: '/tmp/my-notes',
+          source: 'manual',
+          sources: [],
+        }],
+      }
     } else if (url.pathname === '/api/usage') {
       body = {
         ok: true,
@@ -610,7 +630,10 @@ test('隔离页面保留项目聚合且文件管理入口可打开', async () =>
 
   await page.locator('button.action-btn').filter({ hasText: '文件管理' }).click()
   await page.waitForSelector('.file-manager-dialog', { state: 'visible' })
-  assert.match(await page.locator('.file-manager-dialog').innerText(), /管理目录/)
+  const fileManagerText = await page.locator('.file-manager-dialog').innerText()
+  assert.match(fileManagerText, /AI 工作目录/)
+  assert.match(fileManagerText, /我的目录/)
+  assert.match(fileManagerText, /Codex、Future AI/)
   await page.locator('.file-manager-dialog .el-dialog__headerbtn').click()
 
   await page.locator('button.top-indicator').filter({ hasText: '网关' }).click()

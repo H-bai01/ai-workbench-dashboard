@@ -301,7 +301,7 @@ const topBarMeta: Record<string, IconMeta> = {
 
 // ── 元数据：每个 id 对应的 icon + label + desc（功能区可排序项，已移除 GPU）──
 const statusBarMeta: Record<string, IconMeta> = {
-  fileManager: { icon: FolderOpened, tone: 'tone-sky', label: '文件管理', desc: '查看系统所有文件' },
+  fileManager: { icon: FolderOpened, tone: 'tone-sky', label: '文件管理', desc: '管理 AI 工作目录和我的目录' },
   billing:     { icon: Money, tone: 'tone-cyan', label: '计费配置', desc: '按模型自定义 OpenClaw / Codex / Claude Code 计费' },
   skills:      { icon: SuitcaseLine, tone: 'tone-blue', label: 'OpenClaw 技能库', desc: '管理 OpenClaw Agent 技能' },
   webui:       { icon: Link, tone: 'tone-teal', label: 'WebUI', desc: '跳转 OpenClaw 原生界面' },
