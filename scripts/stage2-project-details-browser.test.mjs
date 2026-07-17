@@ -134,6 +134,10 @@ async function openProject(entry, name) {
   await locator.scrollIntoViewIfNeeded()
   if (entry === 'monitor') await locator.locator('button').filter({ hasText: '查看' }).click()
   else await locator.click()
+  if (entry === 'pulse' || entry === 'monitor') {
+    await page.waitForSelector('.monitor-detail-dialog', { state: 'visible' })
+    await page.locator('.monitor-detail-dialog button').filter({ hasText: '查看用量详情' }).click()
+  }
   await page.waitForSelector('[data-testid="project-scope-banner"]', { state: 'visible' })
   await page.locator('.detail-range-quick .range-btn').filter({ hasText: /^全部$/ }).click()
   await page.waitForFunction(() => !document.querySelector('.token-detail-dialog .el-loading-mask'))
@@ -310,6 +314,8 @@ test('工作台 uptime 来自隔离后端且健康检查不是一秒轮询', asy
 test('旧总数小于模型明细合计时比例仍为 0 到 100 且接近 100', async () => {
   await page.locator('.agent-pulse-app-tab').filter({ hasText: 'OpenClaw' }).click()
   await page.locator('.agent-pulse-item').first().click()
+  await page.waitForSelector('.monitor-detail-dialog', { state: 'visible' })
+  await page.locator('.monitor-detail-dialog button').filter({ hasText: '打开工具专属详情' }).click()
   await page.waitForSelector('.model-breakdown-row', { state: 'visible' })
   const percentages = await page.locator('.model-pct-text').allInnerTexts()
   const values = percentages.map(text => Number(text.replace('%', '')))

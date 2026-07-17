@@ -304,6 +304,8 @@ test('真实 Chrome 从项目专属明细进入统一只读执行记录并分页
   const project = page.locator('[data-project-entry="pulse"][data-project-name="项目执行记录"]').first()
   await project.scrollIntoViewIfNeeded()
   await project.click()
+  await page.waitForSelector('.monitor-detail-dialog', { state: 'visible' })
+  await page.locator('.monitor-detail-dialog button').filter({ hasText: '查看用量详情' }).click()
   await page.waitForSelector('[data-testid="project-scope-banner"]', { state: 'visible' })
   await page.locator('[data-testid="project-scope-banner"] button').filter({ hasText: '查看执行记录' }).click()
   await page.waitForSelector('.session-execution-dialog', { state: 'visible' })
@@ -377,6 +379,11 @@ test('OpenClaw 执行记录等待 Agent 抽屉真实关闭且重复操作不残�
     await tokenDetailClose.click()
     await page.waitForSelector('.token-detail-dialog', { state: 'hidden' })
   }
+  const monitorDetailClose = page.locator('.monitor-detail-dialog .el-dialog__headerbtn')
+  if (await monitorDetailClose.isVisible()) {
+    await monitorDetailClose.click()
+    await page.waitForSelector('.monitor-detail-dialog', { state: 'hidden' })
+  }
 
   await page.locator('.agent-pulse-app-tab').filter({ hasText: 'OpenClaw' }).click()
   const agentEntry = page.locator('.agent-pulse-item').filter({ hasText: '测试 Agent' })
@@ -384,6 +391,8 @@ test('OpenClaw 执行记录等待 Agent 抽屉真实关闭且重复操作不残�
 
   const openAndExercise = async (round) => {
     await agentEntry.click()
+    await page.waitForSelector('.monitor-detail-dialog', { state: 'visible' })
+    await page.locator('.monitor-detail-dialog button').filter({ hasText: '打开工具专属详情' }).click()
     await page.waitForSelector('.el-drawer', { state: 'visible' })
     assert.equal(await page.locator('.session-execution-dialog:visible').count(), 0)
 
@@ -458,6 +467,8 @@ test('OpenClaw 执行记录等待 Agent 抽屉真实关闭且重复操作不残�
   await openAndExercise(2)
 
   await agentEntry.click()
+  await page.waitForSelector('.monitor-detail-dialog', { state: 'visible' })
+  await page.locator('.monitor-detail-dialog button').filter({ hasText: '打开工具专属详情' }).click()
   await page.waitForSelector('.el-drawer', { state: 'visible' })
   const drawerClose = page.locator('.el-drawer .el-drawer__close-btn')
   assert.equal(await drawerClose.count(), 1)

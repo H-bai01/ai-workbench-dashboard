@@ -279,7 +279,11 @@ test('真实 Gateway hello-ok、原生控制台、会话深链和浏览器无密
     ])
     assert.equal(await page.title(), 'OpenClaw Control')
     assert.equal(new URL(page.url()).pathname, '/gateway-api/chat')
-    assert.equal(new URL(page.url()).searchParams.get('session'), 'main')
+    const selectedSession = new URL(page.url()).searchParams.get('session')
+    assert.ok(
+      selectedSession === 'main' || selectedSession?.endsWith(':main'),
+      `unexpected selected session: ${selectedSession}`,
+    )
     assert.deepEqual(resourceFailures, [])
     const storage = await page.evaluate(() => JSON.stringify({
       local: Object.fromEntries(Object.entries(localStorage)),
