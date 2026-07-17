@@ -1,0 +1,91 @@
+{
+  "name": "Publish npm Release",
+  "on": {
+    "workflow_dispatch": {
+      "inputs": {
+        "tag": {
+          "description": "已经完成验收的 Git 标签，例如 v2.10.0",
+          "required": true,
+          "type": "string"
+        }
+      }
+    }
+  },
+  "permissions": {
+    "contents": "read",
+    "id-token": "write"
+  },
+  "concurrency": {
+    "group": "npm-release",
+    "cancel-in-progress": false
+  },
+  "jobs": {
+    "publish": {
+      "runs-on": "ubuntu-latest",
+      "timeout-minutes": 45,
+      "permissions": {
+        "contents": "read",
+        "id-token": "write"
+      },
+      "steps": [
+        {
+          "name": "Checkout approved tag",
+          "uses": "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+          "with": {
+            "ref": "${{ inputs.tag }}",
+            "persist-credentials": false
+          }
+        },
+        {
+          "name": "Set up Node",
+          "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+          "with": {
+            "node-version": "24.x",
+            "registry-url": "https://registry.npmjs.org",
+            "package-manager-cache": false
+          }
+        },
+        {
+          "name": "Use trusted-publishing capable npm",
+          "run": "npm install --global npm@11.18.0"
+        },
+        {
+          "name": "Install locked dependencies",
+          "run": "npm ci --ignore-scripts"
+        },
+        {
+          "name": "Install controlled Chromium",
+          "run": "npx --no-install playwright install --with-deps chromium"
+        },
+        {
+          "name": "Select controlled browser",
+          "shell": "bash",
+          "run": "browser_path=\"$(node -e \"import('playwright').then(({ chromium }) => process.stdout.write(chromium.executablePath()))\")\"\ntest -x \"$browser_path\"\nprintf 'OPENCLAW_TEST_BROWSER=%s\\n' \"$browser_path\" >> \"$GITHUB_ENV\""
+        },
+        {
+          "name": "Verify tag and package version",
+          "shell": "bash",
+          "run": "version=\"$(node -p \"require('./package.json').version\")\"\ntest \"${{ inputs.tag }}\" = \"v${version}\"\nprintf 'PACKAGE_VERSION=%s\\n' \"$version\" >> \"$GITHUB_ENV\""
+        },
+        {
+          "name": "Run release tests",
+          "run": "npm run test:version && npm run test:npm-package && npm run test:unit && npm run build"
+        },
+        {
+          "name": "Test packed artifact in a clean home",
+          "shell": "bash",
+          "run": "set -euo pipefail\nrelease_root=\"$(mktemp -d)\"\ntrap 'if [ -n \"${launcher_pid:-}\" ]; then kill \"$launcher_pid\" 2>/dev/null || true; wait \"$launcher_pid\" 2>/dev/null || true; fi; rm -rf \"$release_root\"' EXIT\nmkdir -p \"$release_root/package\" \"$release_root/home\"\ntarball=\"$(npm pack --ignore-scripts --pack-destination \"$release_root\" | tail -n 1)\"\ncd \"$release_root/package\"\nnpm init -y >/dev/null\nnpm install \"$release_root/$tarball\" --ignore-scripts --registry=https://registry.npmjs.org\nHOME=\"$release_root/home\" USERPROFILE=\"$release_root/home\" FRONTEND_PORT=32121 BACKEND_PORT=32122 OPENCLAW_SKIP_DOTENV=1 ./node_modules/.bin/ai-workbench-dashboard start >\"$release_root/runtime.log\" 2>&1 &\nlauncher_pid=$!\nfor attempt in $(seq 1 60); do\n  if curl --fail --silent --max-time 2 http://127.0.0.1:32121/ >/dev/null && curl --fail --silent --max-time 2 http://127.0.0.1:32122/api/health >/dev/null; then\n    break\n  fi\n  if ! kill -0 \"$launcher_pid\" 2>/dev/null; then\n    exit 1\n  fi\n  if [ \"$attempt\" = 60 ]; then\n    exit 1\n  fi\n  sleep 1\ndone\nkill \"$launcher_pid\"\nwait \"$launcher_pid\" 2>/dev/null || true\nlauncher_pid=\"\""
+        },
+        {
+          "name": "Publish verified package with npm OIDC",
+          "run": "npm publish --access public"
+        },
+        {
+          "name": "Verify registry latest can really start",
+          "shell": "bash",
+          "run": "set -euo pipefail\nverify_root=\"$(mktemp -d)\"\ntrap 'if [ -n \"${launcher_pid:-}\" ]; then kill \"$launcher_pid\" 2>/dev/null || true; wait \"$launcher_pid\" 2>/dev/null || true; fi; rm -rf \"$verify_root\"' EXIT\ncd \"$verify_root\"\nHOME=\"$verify_root/home\" USERPROFILE=\"$verify_root/home\" FRONTEND_PORT=32221 BACKEND_PORT=32222 OPENCLAW_SKIP_DOTENV=1 npx --yes \"ai-workbench-dashboard@latest\" start >\"$verify_root/runtime.log\" 2>&1 &\nlauncher_pid=$!\nfor attempt in $(seq 1 60); do\n  if curl --fail --silent --max-time 2 http://127.0.0.1:32221/ >/dev/null && curl --fail --silent --max-time 2 http://127.0.0.1:32222/api/health >/dev/null; then\n    break\n  fi\n  if ! kill -0 \"$launcher_pid\" 2>/dev/null; then\n    exit 1\n  fi\n  if [ \"$attempt\" = 60 ]; then\n    exit 1\n  fi\n  sleep 1\ndone\ninstalled_version=\"$(npx --yes \"ai-workbench-dashboard@latest\" --version)\"\ntest \"$installed_version\" = \"$PACKAGE_VERSION\"\nkill \"$launcher_pid\"\nwait \"$launcher_pid\" 2>/dev/null || true\nlauncher_pid=\"\""
+        }
+      ]
+    }
+  }
+}
