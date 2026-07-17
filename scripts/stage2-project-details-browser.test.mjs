@@ -230,7 +230,28 @@ before(async () => {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
     }
     if (pathname === '/api/usage') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(openClawUsage()) })
-    if (pathname === '/api/cost-timeline') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, timeline: [] }) })
+    if (pathname === '/api/cost-timeline') return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        ok: true,
+        timeline: [{
+          date: new Date().toISOString().slice(0, 10),
+          tokens: 0,
+          cost: 0,
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          byModel: {},
+          byAgentByModel: {
+            main: {
+              'legacy-model': { tokens: 30, cost: 1, input: 20, output: 10, cacheRead: 0, cacheWrite: 0 },
+            },
+          },
+        }],
+      }),
+    })
     if (pathname === '/api/local-ai-usage') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, ...local }) })
     if (pathname === '/api/local-ai-status') return route.fulfill({
       status: 200,

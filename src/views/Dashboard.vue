@@ -3044,6 +3044,15 @@ function getAgentScopedUsage(agent: AgentInfo): UsageDatum {
   return ownValue(scopedAgentUsageMap.value, id) || emptyUsage()
 }
 
+function hasScopedUsageActivity(usage: UsageDatum): boolean {
+  return Number(usage.tokens) > 0
+    || Number(usage.cost) > 0
+    || Number(usage.input) > 0
+    || Number(usage.output) > 0
+    || Number(usage.cacheRead) > 0
+    || Number(usage.cacheWrite) > 0
+}
+
 function usageMetricText(usage: UsageDatum): string {
   if (tokenMiniMetric.value === 'cost') return formatCostScope(usage.cost, usage.priceStatus, usage.billingMode)
   const value = usageMetricValue(usage)
@@ -3053,6 +3062,7 @@ function usageMetricText(usage: UsageDatum): string {
 
 const agentPulseRows = computed<PulseRow[]>(() => {
   return [...store.agents]
+    .filter((agent) => hasScopedUsageActivity(getAgentScopedUsage(agent)))
     .map((agent) => {
       const usage = getAgentScopedUsage(agent)
       const usageValue = usageMetricValue(usage)
@@ -3253,7 +3263,7 @@ const pulseApps = computed<PulseApp[]>(() => {
       openclawRows,
       sumPulseRows(openclawRows),
       'Agent',
-      `${store.runningAgents.length} 个正在干活`,
+      `${openclawRows.filter((row) => row.agent?.status === 'running').length} 个正在干活`,
     ),
     makePulseApp('codex', 'Codex', codexRows, sumPulseRows(codexRows), '项目'),
     makePulseApp('claude-code', 'Claude Code', claudeRows, sumPulseRows(claudeRows), '项目'),

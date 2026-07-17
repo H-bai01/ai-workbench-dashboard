@@ -92,7 +92,24 @@ function localDateKey(date = new Date()) {
 
 function snapshotTimeline(tokens, hourly = false) {
   const date = hourly ? `${localDateKey()} 12:00` : localDateKey()
-  return [{ date, ...usage(tokens), byModel: {}, byAgentByModel: {} }]
+  const activeAgents = configuredAgents.filter(agent => agent.id !== 'range-inactive-agent')
+  const byAgentByModel = Object.create(null)
+  let remaining = tokens
+  activeAgents.forEach((agent, index) => {
+    const agentTokens = index === activeAgents.length - 1
+      ? remaining
+      : Math.floor(tokens / activeAgents.length)
+    remaining -= agentTokens
+    byAgentByModel[agent.id] = Object.assign(Object.create(null), {
+      'generic-model': usage(agentTokens),
+    })
+  })
+  return [{
+    date,
+    ...usage(tokens),
+    byModel: { 'generic-model': usage(tokens) },
+    byAgentByModel,
+  }]
 }
 
 function localUsageBody(tokens, hourly = false) {
@@ -146,6 +163,7 @@ before(async () => {
     { id: 'encoded-separator-agent', name: '编码分隔头像', avatar: '/avatars/%2Ftrap.png', emoji: '' },
     { id: 'double-encoded-agent', name: '重复编码头像', avatar: '/avatars/%252e%252e/trap.png', emoji: '' },
     { id: 'empty-api-agent', name: '空头像标识', avatar: '/api/agent-avatar/', emoji: '' },
+    { id: 'range-inactive-agent', name: '范围外助手', avatar: '', emoji: '' },
   ]
   frontendPort = await freePort()
   const viteBin = path.join(repo, 'node_modules', 'vite', 'bin', 'vite.js')
@@ -646,6 +664,16 @@ test('隔离页面保留项目聚合且文件管理入口可打开', async () =>
 
 test('任意 Agent 名称、缺省头像和本地自定义头像在主要入口正常显示', async () => {
   await page.locator('.agent-pulse-item').filter({ hasText: '研发助手' }).waitFor({ state: 'visible' })
+  assert.equal(await page.locator('.agent-pulse-item').filter({ hasText: '范围外助手' }).count(), 0)
+  await page.locator('.stat-pill.stat-total').click()
+  await page.locator('.monitor-objects-dialog').waitFor({ state: 'visible' })
+  assert.match(
+    await page.locator('.monitor-source-chip').filter({ hasText: 'OpenClaw' }).innerText(),
+    /7 个Agent/,
+  )
+  assert.equal(await page.locator('.monitor-object-row').filter({ hasText: '范围外助手' }).count(), 0)
+  await page.locator('.monitor-objects-dialog .el-dialog__headerbtn').click()
+  await page.locator('.monitor-objects-dialog').waitFor({ state: 'hidden' })
   browserErrors.length = 0
   const externalPulseAvatar = page.locator('.agent-pulse-item').filter({ hasText: '外部头像助手' }).locator('img.agent-pulse-avatar')
   assert.equal(await externalPulseAvatar.getAttribute('src'), '/avatars/default.svg')
