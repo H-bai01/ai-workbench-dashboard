@@ -729,7 +729,9 @@ test('任意 Agent 名称、缺省头像和本地自定义头像在主要入口�
   assert.ok(quickAvatars.some(src => src === '/avatars/default.svg'))
   await page.locator('.qmf-close').click()
 
-  await page.locator('button.action-btn').filter({ hasText: '定时任务' }).click()
+  await page.locator('button.action-btn').filter({ hasText: '自动任务' }).click()
+  await page.locator('.tool-management-dialog').waitFor({ state: 'visible' })
+  await page.locator('.tool-management-group').filter({ hasText: 'OpenClaw' }).locator('button').filter({ hasText: '自动任务' }).click()
   await page.locator('.cron-center-dialog').waitFor({ state: 'visible' })
   assert.match(await page.locator('.cc-agent-chip').first().innerText(), /研发助手/)
   const externalCron = page.locator('.cc-agent-chip').filter({ hasText: '外部头像助手' })
@@ -737,7 +739,9 @@ test('任意 Agent 名称、缺省头像和本地自定义头像在主要入口�
   await page.locator('.cron-center-dialog .el-dialog__headerbtn').click()
   await page.locator('.cron-center-dialog').waitFor({ state: 'hidden' })
 
-  await page.locator('button.action-btn').filter({ hasText: 'OpenClaw 项目' }).click()
+  await page.locator('button.action-btn').filter({ hasText: '项目与任务' }).click()
+  await page.locator('.tool-management-dialog').waitFor({ state: 'visible' })
+  await page.locator('.tool-management-group').filter({ hasText: 'OpenClaw' }).locator('button').filter({ hasText: '项目与任务' }).click()
   await page.locator('.project-board-dialog').waitFor({ state: 'visible' })
   assert.match(await page.locator('.pb-card-agent').last().innerText(), /研发助手/)
   await page.locator('.project-board-dialog .el-dialog__headerbtn').click()

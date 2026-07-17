@@ -218,6 +218,14 @@ const resultMsg = ref('')
 const resultType = ref<'success' | 'error'>('success')
 const configLoading = ref(false)
 const configSaving = ref(false)
+
+function openFromToolManagement(event: Event): void {
+  const toolId = String((event as CustomEvent<{ toolId?: string }>).detail?.toolId || '')
+  if (toolId && toolId !== 'openclaw') return
+  panelVisible.value = true
+  editing.value = false
+  void nextTick(() => inputRef.value?.focus())
+}
 const inputRef = ref<HTMLTextAreaElement | null>(null)
 const panelPosition = ref<{ left: number; top: number } | null>(loadPanelPosition())
 const dragState = ref<{ dx: number; dy: number } | null>(null)
@@ -664,10 +672,12 @@ onMounted(() => {
   keepTriggerVisible()
   document.addEventListener('keydown', onKeydown)
   window.addEventListener('resize', keepTriggerVisible)
+  window.addEventListener('ai-workbench:open-quick-message', openFromToolManagement)
 })
 onUnmounted(() => {
   document.removeEventListener('keydown', onKeydown)
   window.removeEventListener('resize', keepTriggerVisible)
+  window.removeEventListener('ai-workbench:open-quick-message', openFromToolManagement)
   document.removeEventListener('mousemove', onPanelDrag)
   document.removeEventListener('mouseup', stopPanelDrag)
   document.removeEventListener('mousemove', onTriggerDrag)

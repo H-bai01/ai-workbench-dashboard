@@ -5,6 +5,7 @@ export type AiToolCapability =
   | 'sessions'
   | 'files'
   | 'tasks'
+  | 'automation'
   | 'messages'
   | 'skills'
   | 'version'

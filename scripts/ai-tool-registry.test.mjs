@@ -7,6 +7,7 @@ import {
   DEFAULT_AI_TOOLS,
   normalizeAiToolDescriptor,
 } from '../src/utils/ai-tool-registry.mjs'
+import { buildAiToolManagementActions } from '../src/utils/ai-tool-actions.mjs'
 
 const repo = path.resolve(import.meta.dirname, '..')
 
@@ -49,4 +50,39 @@ test('任务看板消费通用监控对象而不是 OpenClaw Agent 专属列表'
   assert.match(dashboard, /monitorBoardRows/)
   assert.doesNotMatch(dashboard, /store\.(?:idle|running|aborted|error|unknown)Agents/)
   assert.doesNotMatch(dashboard, /OpenClaw Agent 任务区/)
+})
+
+test('管理入口严格按每个工具声明的能力生成', () => {
+  const registry = createAiToolRegistry(DEFAULT_AI_TOOLS)
+  const future = registry.register({
+    id: 'future-ai',
+    name: 'Future AI',
+    capabilities: {
+      monitor: true,
+      files: true,
+      automation: true,
+      nativeUi: false,
+    },
+  })
+  assert.deepEqual(
+    buildAiToolManagementActions(future).map(action => action.id),
+    ['monitor', 'files', 'automation'],
+  )
+  assert.equal(
+    buildAiToolManagementActions(future).some(action => action.id === 'nativeUi'),
+    false,
+  )
+})
+
+test('首页的工具专属功能先进入统一能力入口', () => {
+  const dashboard = fs.readFileSync(path.join(repo, 'src/views/Dashboard.vue'), 'utf8')
+  const dialog = fs.readFileSync(path.join(repo, 'src/components/ToolManagementDialog.vue'), 'utf8')
+  assert.match(dashboard, /<ToolManagementDialog/)
+  assert.match(dashboard, /openToolManagement\('skills'\)/)
+  assert.match(dashboard, /openToolManagement\('nativeUi'\)/)
+  assert.match(dashboard, /openToolManagement\('tasks'\)/)
+  assert.match(dashboard, /openToolManagement\('automation'\)/)
+  assert.match(dialog, /每个工具只显示自身真实支持的功能/)
+  assert.doesNotMatch(dashboard, /<div class="action-label">OpenClaw 技能<\/div>/)
+  assert.doesNotMatch(dashboard, /<div class="action-label">OpenClaw 项目<\/div>/)
 })

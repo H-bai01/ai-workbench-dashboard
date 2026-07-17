@@ -626,44 +626,44 @@
 
         <!-- 技能库 -->
         <div class="action-slot action-slot--primary action-slot--primary-last" :style="{ order: statusBarOrder('skills') }">
-          <button class="action-btn" @click="skillsDialogVisible = true">
+          <button class="action-btn" @click="openToolManagement('skills')">
             <el-icon :size="22"><Briefcase /></el-icon>
             <div class="action-text">
-              <div class="action-label">OpenClaw 技能</div>
-              <div class="action-value">管理 Agent 技能</div>
+              <div class="action-label">AI 工具能力</div>
+              <div class="action-value">按能力管理</div>
             </div>
           </button>
         </div>
 
-        <!-- WebUI -->
+        <!-- 原生控制台 -->
         <div class="action-slot action-slot--secondary action-slot--secondary-wide" :style="{ order: statusBarOrder('webui') }">
-          <button class="action-btn" @click="openWebUI">
+          <button class="action-btn" @click="openToolManagement('nativeUi')">
             <el-icon :size="22"><Link /></el-icon>
             <div class="action-text">
-              <div class="action-label">WebUI</div>
-              <div class="action-value">原生控制台</div>
+              <div class="action-label">原生控制台</div>
+              <div class="action-value">按工具打开</div>
             </div>
           </button>
         </div>
 
-        <!-- 项目看板 -->
+        <!-- 项目与任务 -->
         <div class="action-slot action-slot--secondary" :style="{ order: statusBarOrder('projects') }">
-          <button class="action-btn" @click="projectBoardVisible = true">
+          <button class="action-btn" @click="openToolManagement('tasks')">
             <el-icon :size="22"><Grid /></el-icon>
             <div class="action-text">
-              <div class="action-label">OpenClaw 项目</div>
+              <div class="action-label">项目与任务</div>
               <div class="action-value">{{ projectSummary }}</div>
             </div>
           </button>
         </div>
 
-        <!-- Cron 任务中心 -->
+        <!-- 自动任务 -->
         <div class="action-slot action-slot--secondary" :style="{ order: statusBarOrder('cron') }">
-          <button class="action-btn" @click="cronCenterVisible = true">
+          <button class="action-btn" @click="openToolManagement('automation')">
             <el-icon :size="22"><Timer /></el-icon>
             <div class="action-text">
-              <div class="action-label">定时任务</div>
-              <div class="action-value">Cron 中心</div>
+              <div class="action-label">自动任务</div>
+              <div class="action-value">按工具管理</div>
             </div>
           </button>
         </div>
@@ -1071,6 +1071,13 @@
       @execution="openExecutionScope"
     />
 
+    <ToolManagementDialog
+      v-model="toolManagementVisible"
+      :tools="aiToolDescriptors"
+      :focus-action="toolManagementFocus"
+      @action="handleToolManagementAction"
+    />
+
     <FileManagerDialog v-model="fileManagerVisible" />
 
     <NotificationDetailDialog
@@ -1117,6 +1124,7 @@ import ProjectBoardDialog from '../components/ProjectBoardDialog.vue'
 import CronCenterDialog from '../components/CronCenterDialog.vue'
 import CommandPaletteDialog from '../components/CommandPaletteDialog.vue'
 import UnifiedActivityTimeline from '../components/UnifiedActivityTimeline.vue'
+import ToolManagementDialog from '../components/ToolManagementDialog.vue'
 import FileManagerDialog from '../components/FileManagerDialog.vue'
 import NotificationDetailDialog from '../components/NotificationDetailDialog.vue'
 import ChangelogPanel from '../components/ChangelogPanel.vue'
@@ -1139,6 +1147,7 @@ import {
   DEFAULT_AI_TOOLS,
   type AiToolDescriptor,
 } from '../utils/ai-tool-registry.mjs'
+import type { AiToolManagementActionId } from '../utils/ai-tool-actions.mjs'
 import type { ProjectTokenScope } from '../types/project-token-scope'
 import type { SessionObservationScope } from '../types/session-observation'
 import type { NotificationItem } from '../utils/notification-center.mjs'
@@ -1424,7 +1433,7 @@ const layoutDialogVisible = ref(false)
 
 // 项目看板
 const projectBoardVisible = ref(false)
-const projectSummary = ref('OpenClaw 项目进度')
+const projectSummary = ref('按工具查看')
 
 // Cron 任务中心
 const cronCenterVisible = ref(false)
@@ -1432,6 +1441,8 @@ const cronCenterVisible = ref(false)
 // Sprint 7: 命令面板 + 活动时间线弹窗备用（命令面板打开）
 const commandPaletteVisible = ref(false)
 const activityTimelineVisible = ref(false)
+const toolManagementVisible = ref(false)
+const toolManagementFocus = ref<AiToolManagementActionId | null>(null)
 const fileManagerVisible = ref(false)
 const notificationPopoverVisible = ref(false)
 const notificationDetailVisible = ref(false)
@@ -3156,6 +3167,11 @@ const pulseApps = computed<PulseApp[]>(() => {
     })
 })
 
+const aiToolDescriptors = computed(() => {
+  void pulseApps.value
+  return aiToolRegistry.list()
+})
+
 const selectedPulseApp = computed(() => (
   pulseApps.value.find((app) => app.id === selectedPulseAppId.value) || pulseApps.value[0]
 ))
@@ -3563,6 +3579,52 @@ function checkLoadingHint(): void {
 /** 通过同源服务端代理打开 OpenClaw WebUI，浏览器 URL 不携带凭据。 */
 function openWebUI(): void {
   window.open('/gateway-api/', '_blank', 'noopener,noreferrer')
+}
+
+function openToolManagement(action: AiToolManagementActionId | null = null): void {
+  toolManagementFocus.value = action
+  toolManagementVisible.value = true
+}
+
+function handleToolManagementAction(toolId: string, action: AiToolManagementActionId): void {
+  toolManagementVisible.value = false
+  switch (action) {
+    case 'monitor':
+      monitorSourceFilter.value = [toolId]
+      openMonitorObjectsDialog('all')
+      break
+    case 'usage':
+      openTokenDetail(toolId)
+      break
+    case 'sessions':
+    case 'timeline':
+      activityTimelineVisible.value = true
+      break
+    case 'files':
+      fileManagerVisible.value = true
+      break
+    case 'tasks':
+      projectBoardVisible.value = true
+      break
+    case 'automation':
+      cronCenterVisible.value = true
+      break
+    case 'messages':
+      window.dispatchEvent(new CustomEvent('ai-workbench:open-quick-message', { detail: { toolId } }))
+      break
+    case 'skills':
+      skillsDialogVisible.value = true
+      break
+    case 'version':
+      versionDialogVisible.value = true
+      break
+    case 'nativeUi':
+      if (toolId === 'openclaw') openWebUI()
+      break
+    case 'search':
+      commandPaletteVisible.value = true
+      break
+  }
 }
 
 // Stats cards（每张卡片带 id，便于自定义排序）
