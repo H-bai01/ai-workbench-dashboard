@@ -1,4 +1,4 @@
-export type SessionObservationSource = 'openclaw' | 'codex' | 'claude-code'
+export type SessionObservationSource = string
 
 export type SessionEventType =
   | 'user_message'
@@ -60,6 +60,20 @@ export interface ObservedSession {
   priceStatus: 'configured' | 'partial' | 'unconfigured'
   thinkingAvailability: string
 }
+
+export type ObservedSessionIndexEntry = Pick<
+  ObservedSession,
+  | 'source'
+  | 'clientName'
+  | 'sessionId'
+  | 'name'
+  | 'projectKey'
+  | 'projectPath'
+  | 'agentId'
+  | 'model'
+  | 'updatedAt'
+  | 'lastActivityMs'
+>
 
 export interface ObservedSessionEvent {
   id: string

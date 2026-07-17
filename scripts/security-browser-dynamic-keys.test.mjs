@@ -707,6 +707,10 @@ test('任意 Agent 名称、缺省头像和本地自定义头像在主要入口�
     assert.equal(await avatar.getAttribute('src'), '/avatars/default.svg', name)
   }
   await page.locator('.agent-pulse-item').filter({ hasText: '研发助手' }).click()
+  await page.locator('.monitor-detail-dialog').waitFor({ state: 'visible' })
+  assert.match(await page.locator('.monitor-detail-dialog').innerText(), /OpenClaw/)
+  assert.match(await page.locator('.monitor-detail-dialog').innerText(), /研发助手/)
+  await page.locator('.monitor-detail-dialog button').filter({ hasText: '打开工具专属详情' }).click()
   await page.locator('.el-drawer').waitFor({ state: 'visible' })
   assert.match(await page.locator('.el-drawer').innerText(), /研发助手/)
   assert.match(await page.locator('.drawer-avatar-img').getAttribute('src'), /\/api\/agent-avatar\/custom-agent\?v=fixture$/)

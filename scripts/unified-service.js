@@ -7061,6 +7061,25 @@ export const server = http.createServer(async (req, res) => {
     return
   }
 
+  if (pathname === '/api/session-observation/index' && req.method === 'GET') {
+    try {
+      const allowedQueryKeys = new Set(['source'])
+      if ([...url.searchParams.keys()].some(key => !allowedQueryKeys.has(key))) throw new Error('请求包含不支持的查询参数')
+      const source = String(url.searchParams.get('source') || '').trim()
+      const sessions = SESSION_OBSERVATION_STORE.indexSnapshot(browserOutputSecrets())
+        .filter(session => !source || session.source === source)
+        .sort((a, b) => b.lastActivityMs - a.lastActivityMs)
+      sendJson(res, 200, {
+        sessions,
+        sources: [...new Set(sessions.map(session => session.source))],
+        readOnly: true,
+      })
+    } catch (error) {
+      sendJson(res, 400, { error: error.message, sessions: [], readOnly: true })
+    }
+    return
+  }
+
   if (pathname === '/api/session-observation/sessions' && req.method === 'GET') {
     try {
       const allowedQueryKeys = new Set(['source', 'agentId', 'sessionId', 'sessionIds'])

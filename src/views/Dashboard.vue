@@ -729,18 +729,18 @@
         <button class="module-card-toggle" type="button" @click="toggleTimelineCollapsed()">
           <span class="module-card-title">
             <span class="module-card-eyebrow">运行记录</span>
-            <strong>OpenClaw 活动时间线</strong>
+            <strong>AI 工具活动时间线</strong>
           </span>
           <span class="module-card-hints">
-            <span>Gantt 图</span>
-            <span>按 Agent 展开</span>
+            <span>全部工具</span>
+            <span>按会话展开</span>
           </span>
           <el-icon class="module-card-arrow" :class="{ expanded: !layoutConfig.timelineCollapsed }"><ArrowRight /></el-icon>
         </button>
 
         <!-- 折叠内容（收起时 v-show 控制隐藏但保留 DOM）-->
         <div v-show="!layoutConfig.timelineCollapsed" class="module-card-content itl-content">
-          <ActivityTimelineDialog :inline="true" />
+          <UnifiedActivityTimeline :inline="true" @execution="openExecutionScope" />
         </div>
       </div>
     </section>
@@ -866,6 +866,14 @@
     <SessionExecutionDialog
       v-model:visible="sessionExecutionVisible"
       :scope="sessionExecutionScope"
+    />
+
+    <MonitorObjectDetailDialog
+      v-model:visible="monitorObjectDetailVisible"
+      :object="selectedMonitorDetailObject"
+      @execution="openSelectedMonitorExecution"
+      @usage="openSelectedMonitorUsage"
+      @specialized="openSelectedMonitorSpecialized"
     />
 
     <!-- Version Dialog (REC-068) -->
@@ -1052,12 +1060,16 @@
     <!-- Sprint 7: 命令面板 + 活动时间线 -->
     <CommandPaletteDialog
       v-model="commandPaletteVisible"
+      :monitor-objects="monitorAllRows"
       @open-action="handlePaletteAction"
       @navigate-agent="handlePaletteNavigateAgent"
       @open-token-source="openTokenDetail"
+      @open-monitor-object="openMonitorObjectByKey"
     />
-    <!-- ActivityTimelineDialog 已改为内联时间线区域，保留弹窗备用（从命令面板打开）-->
-    <ActivityTimelineDialog v-model="activityTimelineVisible" />
+    <UnifiedActivityTimeline
+      v-model="activityTimelineVisible"
+      @execution="openExecutionScope"
+    />
 
     <FileManagerDialog v-model="fileManagerVisible" />
 
@@ -1093,6 +1105,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useAgentStore, type AgentInfo } from '../stores/agent'
 import MonitorObjectCard from '../components/MonitorObjectCard.vue'
+import MonitorObjectDetailDialog from '../components/MonitorObjectDetailDialog.vue'
 import AgentDetailDrawer from '../components/AgentDetailDrawer.vue'
 import TokenDetailDialog from '../components/TokenDetailDialog.vue'
 import SessionExecutionDialog from '../components/SessionExecutionDialog.vue'
@@ -1103,7 +1116,7 @@ import LayoutSettingsDialog from '../components/LayoutSettingsDialog.vue'
 import ProjectBoardDialog from '../components/ProjectBoardDialog.vue'
 import CronCenterDialog from '../components/CronCenterDialog.vue'
 import CommandPaletteDialog from '../components/CommandPaletteDialog.vue'
-import ActivityTimelineDialog from '../components/ActivityTimelineDialog.vue'
+import UnifiedActivityTimeline from '../components/UnifiedActivityTimeline.vue'
 import FileManagerDialog from '../components/FileManagerDialog.vue'
 import NotificationDetailDialog from '../components/NotificationDetailDialog.vue'
 import ChangelogPanel from '../components/ChangelogPanel.vue'
@@ -1261,6 +1274,13 @@ function openTokenDetail(sourceId: string | null = null, projectScope: ProjectTo
 const sessionExecutionVisible = ref(false)
 const sessionExecutionScope = ref<SessionObservationScope | null>(null)
 const pendingAgentExecutionScope = ref<SessionObservationScope | null>(null)
+const monitorObjectDetailVisible = ref(false)
+const selectedMonitorObject = ref<MonitorObjectRow | null>(null)
+
+function openExecutionScope(scope: SessionObservationScope): void {
+  sessionExecutionScope.value = scope
+  sessionExecutionVisible.value = true
+}
 
 function openProjectExecution(scope: ProjectTokenScope): void {
   pendingAgentExecutionScope.value = null
@@ -1271,12 +1291,11 @@ function openProjectExecution(scope: ProjectTokenScope): void {
     ElMessage.warning('当前项目没有可识别的会话 ID')
     return
   }
-  sessionExecutionScope.value = {
+  openExecutionScope({
     source: scope.appId,
     displayName: `${scope.appName} · ${scope.projectName}`,
     sessionIds,
-  }
-  sessionExecutionVisible.value = true
+  })
 }
 
 function openAgentExecution(agent: AgentInfo): void {
@@ -3279,6 +3298,23 @@ const monitorAllRows = computed<MonitorObjectRow[]>(() => {
 })
 
 const monitorTotalObjectCount = computed(() => monitorAllRows.value.length)
+const selectedMonitorDetailObject = computed(() => {
+  const row = selectedMonitorObject.value
+  if (!row) return null
+  return {
+    name: row.name,
+    sourceName: row.sourceName,
+    sourceIconSrc: row.sourceIconSrc,
+    avatarSrc: row.avatarSrc,
+    monitorStatus: row.monitorStatus,
+    statusLabel: row.statusLabel,
+    lastActivityText: row.lastActivityText,
+    project: row.project,
+    tokenText: row.tokenText,
+    costText: row.costText,
+    hasSpecializedDetail: Boolean(row.agent),
+  }
+})
 
 function monitorBoardRows(status: MonitorObjectStatus): MonitorObjectRow[] {
   return monitorAllRows.value
@@ -3352,8 +3388,49 @@ function resetMonitorHiddenObjects(): void {
 
 function openMonitorObject(row: MonitorObjectRow): void {
   monitorObjectsDialogVisible.value = false
-  if (row.agent) onAgentDetail(row.agent)
-  else openTokenDetail(null, row.projectScope || null)
+  selectedMonitorObject.value = row
+  monitorObjectDetailVisible.value = true
+}
+
+function openMonitorObjectByKey(key: string): void {
+  const row = monitorAllRows.value.find(item => item.monitorKey === key)
+  if (row) openMonitorObject(row)
+}
+
+function openSelectedMonitorExecution(): void {
+  const row = selectedMonitorObject.value
+  if (!row) return
+  monitorObjectDetailVisible.value = false
+  if (row.agent) {
+    const agentId = String(row.agent.key || '').split(':')[1] || String(row.agent.name || '')
+    if (!agentId) {
+      ElMessage.warning('当前对象没有可识别的会话范围')
+      return
+    }
+    openExecutionScope({
+      source: row.kind,
+      displayName: `${row.sourceName} · ${row.name}`,
+      agentId,
+      sessionIds: [],
+    })
+    return
+  }
+  if (row.projectScope) openProjectExecution(row.projectScope)
+  else ElMessage.warning('当前对象没有可识别的会话范围')
+}
+
+function openSelectedMonitorUsage(): void {
+  const row = selectedMonitorObject.value
+  if (!row) return
+  monitorObjectDetailVisible.value = false
+  openTokenDetail(null, row.projectScope || null)
+}
+
+function openSelectedMonitorSpecialized(): void {
+  const row = selectedMonitorObject.value
+  if (!row?.agent) return
+  monitorObjectDetailVisible.value = false
+  onAgentDetail(row.agent)
 }
 
 function scrollToElement(el: HTMLElement | null): void {
@@ -3376,7 +3453,8 @@ function clearPulseStatusFilter(): void {
 }
 
 function onPulseRowClick(row: PulseRow): void {
-  if (row.kind === 'openclaw' && row.agent) onAgentDetail(row.agent)
+  const monitorRow = monitorAllRows.value.find(item => item.monitorKey === monitorRowKey(row))
+  if (monitorRow) openMonitorObject(monitorRow)
   else openTokenDetail(null, row.projectScope || null)
 }
 

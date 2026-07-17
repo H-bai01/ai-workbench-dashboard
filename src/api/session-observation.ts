@@ -1,5 +1,6 @@
 import type {
   ObservedSession,
+  ObservedSessionIndexEntry,
   ObservedSessionEvent,
   SessionCapability,
   SessionEventType,
@@ -17,6 +18,17 @@ async function getJson<T>(url: string): Promise<T> {
 export async function fetchSessionCapabilities(): Promise<SessionCapability[]> {
   const payload = await getJson<{ capabilities: SessionCapability[] }>('/api/session-observation/capabilities')
   return Array.isArray(payload.capabilities) ? payload.capabilities : []
+}
+
+export async function fetchObservedSessionIndex(source = ''): Promise<{
+  sessions: ObservedSessionIndexEntry[]
+  sources: string[]
+  readOnly: true
+}> {
+  const params = new URLSearchParams()
+  if (source) params.set('source', source)
+  const suffix = params.size ? `?${params.toString()}` : ''
+  return getJson(`/api/session-observation/index${suffix}`)
 }
 
 export async function fetchObservedSessions(scope: SessionObservationScope): Promise<{

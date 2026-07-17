@@ -10,7 +10,7 @@
               ref="inputRef"
               v-model="query"
               class="palette-input"
-              placeholder="搜索功能、Agent、本地 AI 项目、历史消息..."
+              placeholder="搜索功能、AI 工具对象、项目、会话和历史消息..."
               @input="onInput"
             />
             <span v-if="loading" class="palette-spinner" />
@@ -52,6 +52,26 @@
                 </div>
               </div>
 
+              <!-- Generic monitor objects -->
+              <div v-if="monitorObjectResults.length" class="palette-section">
+                <div class="palette-section-title">监控对象</div>
+                <div
+                  v-for="(item, i) in monitorObjectResults"
+                  :key="item.monitorKey"
+                  class="palette-item"
+                  :class="{ active: flatIndex(matchedActions.length, i) === activeIdx }"
+                  @click="selectMonitorObject(item)"
+                  @mouseenter="activeIdx = flatIndex(matchedActions.length, i)"
+                >
+                  <img class="palette-agent-avatar" :src="item.avatarSrc || item.sourceIconSrc" :alt="item.name" @error="setDefaultAvatar" />
+                  <div class="palette-item-text">
+                    <span class="palette-item-label">{{ item.name }}</span>
+                    <span class="palette-item-desc">{{ item.sourceName }} · {{ item.project || item.statusLabel }}</span>
+                  </div>
+                  <el-icon class="palette-item-arrow"><ArrowRight /></el-icon>
+                </div>
+              </div>
+
               <!-- Agents section -->
               <div v-if="agentResults.length" class="palette-section">
                 <div class="palette-section-title">Agent</div>
@@ -59,9 +79,9 @@
                   v-for="(ag, i) in agentResults"
                   :key="ag.id"
                   class="palette-item"
-                  :class="{ active: flatIndex(matchedActions.length, i) === activeIdx }"
+                  :class="{ active: flatIndex(matchedActions.length + monitorObjectResults.length, i) === activeIdx }"
                   @click="selectAgent(ag)"
-                  @mouseenter="activeIdx = flatIndex(matchedActions.length, i)"
+                  @mouseenter="activeIdx = flatIndex(matchedActions.length + monitorObjectResults.length, i)"
                 >
                   <img class="palette-agent-avatar" :src="agentAvatar(ag.id)" :alt="agentDisplayName(ag.id)" @error="setDefaultAvatar" />
                   <div class="palette-item-text">
@@ -79,9 +99,9 @@
                   v-for="(item, i) in localAiResults"
                   :key="item.sourceId"
                   class="palette-item"
-                  :class="{ active: flatIndex(matchedActions.length + agentResults.length, i) === activeIdx }"
+                  :class="{ active: flatIndex(matchedActions.length + monitorObjectResults.length + agentResults.length, i) === activeIdx }"
                   @click="selectLocalAiItem(item)"
-                  @mouseenter="activeIdx = flatIndex(matchedActions.length + agentResults.length, i)"
+                  @mouseenter="activeIdx = flatIndex(matchedActions.length + monitorObjectResults.length + agentResults.length, i)"
                 >
                   <img class="palette-agent-avatar palette-local-avatar" :src="item.avatarSrc" :alt="item.appName" @error="setDefaultAvatar" />
                   <div class="palette-item-text">
@@ -99,9 +119,9 @@
                   v-for="(msg, i) in messageResults"
                   :key="`${msg.session_id}-${i}`"
                   class="palette-item palette-msg-item"
-                  :class="{ active: flatIndex(matchedActions.length + agentResults.length + localAiResults.length, i) === activeIdx }"
+                  :class="{ active: flatIndex(matchedActions.length + monitorObjectResults.length + agentResults.length + localAiResults.length, i) === activeIdx }"
                   @click="selectMessage(msg)"
-                  @mouseenter="activeIdx = flatIndex(matchedActions.length + agentResults.length + localAiResults.length, i)"
+                  @mouseenter="activeIdx = flatIndex(matchedActions.length + monitorObjectResults.length + agentResults.length + localAiResults.length, i)"
                 >
                   <img class="palette-agent-avatar" :src="agentAvatar(msg.agent_id)" :alt="agentDisplayName(msg.agent_id)" @error="setDefaultAvatar" />
                   <div class="palette-item-text">
@@ -119,9 +139,9 @@
                   v-for="(doc, i) in docResults"
                   :key="doc.path"
                   class="palette-item palette-msg-item"
-                  :class="{ active: flatIndex(matchedActions.length + agentResults.length + localAiResults.length + messageResults.length, i) === activeIdx }"
+                  :class="{ active: flatIndex(matchedActions.length + monitorObjectResults.length + agentResults.length + localAiResults.length + messageResults.length, i) === activeIdx }"
                   @click="selectDoc(doc)"
-                  @mouseenter="activeIdx = flatIndex(matchedActions.length + agentResults.length + localAiResults.length + messageResults.length, i)"
+                  @mouseenter="activeIdx = flatIndex(matchedActions.length + monitorObjectResults.length + agentResults.length + localAiResults.length + messageResults.length, i)"
                 >
                   <span class="palette-item-icon palette-doc-icon"><Document /></span>
                   <div class="palette-item-text">
@@ -180,18 +200,32 @@ import { normalizeAgentAvatarSource } from '../utils/agent-presentation.mjs'
 import { sanitizeHighlightHtml } from '../utils/safe-content.mjs'
 import { createSafeRecord, ownValue } from '../utils/safe-record.mjs'
 
-const props = defineProps<{ modelValue: boolean }>()
+interface SearchableMonitorObject {
+  monitorKey: string
+  name: string
+  sourceName: string
+  sourceIconSrc: string
+  avatarSrc: string
+  project?: string
+  statusLabel: string
+}
+
+const props = defineProps<{
+  modelValue: boolean
+  monitorObjects?: SearchableMonitorObject[]
+}>()
 const emit = defineEmits<{
   'update:modelValue': [val: boolean]
   'open-action': [key: string]
   'navigate-agent': [agentId: string]
   'open-token-source': [sourceId: string]
+  'open-monitor-object': [monitorKey: string]
 }>()
 
 const ACTIONS = [
   { key: 'projects',    icon: Grid,        label: 'OpenClaw 项目看板', desc: '5列 Kanban 跟踪 OpenClaw 项目进度' },
   { key: 'cron',        icon: Timer,       label: '定时任务',    desc: 'Cron 任务中心' },
-  { key: 'timeline',   icon: DataLine,    label: 'OpenClaw 活动时间线', desc: '查看 Agent session Gantt 图' },
+  { key: 'timeline',   icon: DataLine,    label: 'AI 工具活动时间线', desc: '查看全部工具的本地会话活动' },
   { key: 'fileManager',icon: Folder,      label: '文件管理',    desc: '管理 AI 工作目录和我的目录' },
   { key: 'billing',    icon: Money,       label: '计费配置',    desc: '设置 OpenClaw / Codex / Claude Code 模型计费率' },
   { key: 'skills',     icon: SuitcaseLine,label: 'OpenClaw 技能库', desc: '查看所有 Agent 技能' },
@@ -237,6 +271,14 @@ const localAiResults = computed(() => {
     .slice(0, 8)
 })
 
+const monitorObjectResults = computed(() => {
+  const q = query.value.trim().toLowerCase()
+  if (!q) return []
+  return (props.monitorObjects || [])
+    .filter(item => `${item.name} ${item.sourceName} ${item.project || ''} ${item.statusLabel}`.toLowerCase().includes(q))
+    .slice(0, 10)
+})
+
 const footerStatusText = computed(() => {
   const parts: string[] = []
   if (indexStatus.value.totalMessages > 0) {
@@ -250,6 +292,7 @@ const footerStatusText = computed(() => {
 
 const allItems = computed(() => [
   ...matchedActions.value,
+  ...monitorObjectResults.value,
   ...agentResults.value,
   ...localAiResults.value,
   ...messageResults.value,
@@ -329,14 +372,16 @@ function scrollActive() {
 function activateItem() {
   const ai = activeIdx.value
   const aLen = matchedActions.value.length
+  const monitorLen = monitorObjectResults.value.length
   const agLen = agentResults.value.length
   const localLen = localAiResults.value.length
   const msgLen = messageResults.value.length
   if (ai < aLen) selectAction(matchedActions.value[ai])
-  else if (ai < aLen + agLen) selectAgent(agentResults.value[ai - aLen])
-  else if (ai < aLen + agLen + localLen) selectLocalAiItem(localAiResults.value[ai - aLen - agLen])
-  else if (ai < aLen + agLen + localLen + msgLen) selectMessage(messageResults.value[ai - aLen - agLen - localLen])
-  else selectDoc(docResults.value[ai - aLen - agLen - localLen - msgLen])
+  else if (ai < aLen + monitorLen) selectMonitorObject(monitorObjectResults.value[ai - aLen])
+  else if (ai < aLen + monitorLen + agLen) selectAgent(agentResults.value[ai - aLen - monitorLen])
+  else if (ai < aLen + monitorLen + agLen + localLen) selectLocalAiItem(localAiResults.value[ai - aLen - monitorLen - agLen])
+  else if (ai < aLen + monitorLen + agLen + localLen + msgLen) selectMessage(messageResults.value[ai - aLen - monitorLen - agLen - localLen])
+  else selectDoc(docResults.value[ai - aLen - monitorLen - agLen - localLen - msgLen])
 }
 
 function selectDoc(doc: any) {
@@ -354,6 +399,11 @@ function docShortPath(p: string) {
 function selectAction(act: typeof ACTIONS[0]) {
   close()
   emit('open-action', act.key)
+}
+
+function selectMonitorObject(item: SearchableMonitorObject) {
+  close()
+  emit('open-monitor-object', item.monitorKey)
 }
 
 function selectAgent(ag: any) {
