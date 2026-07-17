@@ -59,6 +59,7 @@ test('npm 包只包含审核后的发布文件范围', () => {
     assert.equal(file.startsWith('backups/'), false, file)
     assert.equal(file.startsWith('node_modules/'), false, file)
     assert.equal(file.startsWith('dist/'), false, file)
+    assert.notEqual(file, 'public/versions-cache.json')
     assert.notEqual(file, 'PUBLIC_FILES.txt')
     assert.notEqual(file, 'SHA256SUMS.txt')
     assert.notEqual(file, 'package-lock.json')

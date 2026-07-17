@@ -63,6 +63,8 @@ scripts/codex-api-equivalent-cost.test.mjs
 scripts/cognitive-engine.mjs
 scripts/dashboard-token.d.mts
 scripts/dashboard-token.mjs
+scripts/file-manager-config.mjs
+scripts/file-manager-config.test.mjs
 scripts/fixtures/raster-images.mjs
 scripts/generic-defaults.test.mjs
 scripts/launch-dashboard.sh
@@ -73,9 +75,11 @@ scripts/log-privacy.test.mjs
 scripts/macos-lifecycle.test.mjs
 scripts/macos/common.sh
 scripts/memory-tree.mjs
+scripts/notification-center.test.mjs
 scripts/npm-cli.mjs
 scripts/npm-package.test.mjs
 scripts/openclaw-public-ngrok.sh
+scripts/openclaw-update.test.mjs
 scripts/output-redaction.test.mjs
 scripts/package-lock-integrity.test.mjs
 scripts/personality-state.mjs
@@ -119,10 +123,12 @@ scripts/start-isolated.test.mjs
 scripts/start-local-dashboard.example.sh
 scripts/start-versioned.js
 scripts/status-detection.test.mjs
+scripts/summary-range.test.mjs
 scripts/test-browser-executable.mjs
 scripts/test-browser-executable.test.mjs
 scripts/test-isolation-env.mjs
 scripts/unified-service.js
+scripts/usage-statistics-manager.test.mjs
 scripts/version-consistency.test.mjs
 src/App.vue
 src/api/dashboard.ts
@@ -146,6 +152,7 @@ src/components/CronCenterDialog.vue
 src/components/FileManagerDialog.vue
 src/components/GatewayDoctorDialog.vue
 src/components/LayoutSettingsDialog.vue
+src/components/NotificationDetailDialog.vue
 src/components/ProjectBoardDialog.vue
 src/components/QuickMsgFab.vue
 src/components/SessionExecutionDialog.vue
@@ -172,6 +179,10 @@ src/utils/agent-presentation.mjs
 src/utils/avatarFallback.ts
 src/utils/log-privacy.d.mts
 src/utils/log-privacy.mjs
+src/utils/notification-center.d.mts
+src/utils/notification-center.mjs
+src/utils/openclaw-version.d.mts
+src/utils/openclaw-version.mjs
 src/utils/percentage.d.mts
 src/utils/percentage.mjs
 src/utils/project-token-scope.d.mts
@@ -183,6 +194,8 @@ src/utils/safe-record.mjs
 src/utils/tokenFormat.ts
 src/utils/uptime.d.mts
 src/utils/uptime.mjs
+src/utils/usage-statistics-manager.d.mts
+src/utils/usage-statistics-manager.mjs
 src/utils/usageTimeline.ts
 src/views/Dashboard.vue
 src/vite-env.d.ts

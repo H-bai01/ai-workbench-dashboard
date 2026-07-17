@@ -265,7 +265,22 @@ before(async () => {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
     }
     if (pathname === '/api/usage') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(openClawUsage()) })
-    if (pathname === '/api/cost-timeline') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, timeline: [] }) })
+    if (pathname === '/api/cost-timeline') {
+      const todayUsage = usage(10, 0.01)
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: true,
+          timeline: [{
+            date: new Date().toISOString().slice(0, 10),
+            ...todayUsage,
+            byModel: { test: todayUsage },
+            byAgentByModel: { main: { test: todayUsage } },
+          }],
+        }),
+      })
+    }
     if (pathname === '/api/local-ai-usage') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, ...local }) })
     if (pathname === '/api/local-ai-status') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, statuses: [{ app: 'codex', conversationId: sessionId, project: projectPath, status: 'idle', label: '没干活', lastActivityMs: Date.now() }] }) })
     if (pathname === '/api/agent-ui-status') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, statuses: [] }) })
