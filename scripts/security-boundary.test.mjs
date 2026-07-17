@@ -29,6 +29,7 @@ import {
   optionValue,
   openClawControlCapability,
   parseCommandTemplate,
+  resolvePathCommand,
   runFileCommand,
 } from './security/command-runner.mjs'
 import {
@@ -266,6 +267,27 @@ test('无关子进程拿不到 Gateway token，参数与技能 ID 不能注入�
   assert.equal(optionValue('--message', '--help'), '--message=--help')
   const parsed = parseCommandTemplate('["tool","--value","{input}"]', { '{input}': maliciousArgument })
   assert.deepEqual(parsed, { command: 'tool', args: ['--value', maliciousArgument] })
+})
+
+test('PATH 命令使用其安装目录中的配套运行时', { skip: process.platform === 'win32' }, async () => {
+  const fixtureRoot = path.join(tmpRoot, 'path-command-runtime')
+  const oldRuntime = path.join(fixtureRoot, 'old-runtime')
+  const matchingRuntime = path.join(fixtureRoot, 'matching-runtime')
+  fs.mkdirSync(oldRuntime, { recursive: true })
+  fs.mkdirSync(matchingRuntime, { recursive: true })
+  fs.writeFileSync(path.join(oldRuntime, 'node'), '#!/bin/sh\nprintf old-runtime', { mode: 0o755 })
+  fs.writeFileSync(path.join(matchingRuntime, 'node'), '#!/bin/sh\nprintf matching-runtime', { mode: 0o755 })
+  fs.writeFileSync(path.join(matchingRuntime, 'openclaw'), '#!/usr/bin/env node\n', { mode: 0o755 })
+
+  const invocation = resolvePathCommand('openclaw', {
+    env: { ...process.env, PATH: [oldRuntime, matchingRuntime].join(path.delimiter) },
+  })
+  assert.equal(invocation.command, path.join(matchingRuntime, 'openclaw'))
+  assert.equal(invocation.env.PATH.split(path.delimiter)[0], matchingRuntime)
+
+  const result = await runFileCommand(invocation.command, [], 5000, { env: invocation.env })
+  assert.equal(result.success, true)
+  assert.equal(result.stdout, 'matching-runtime')
 })
 
 test('路径边界拒绝穿越、前缀兄弟、现有/目录/悬空链接，并允许安全的新文件', () => {

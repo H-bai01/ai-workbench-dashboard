@@ -62,7 +62,12 @@
 
     <!-- 任务列表 -->
     <div class="cc-list" v-loading="loading">
-      <div v-if="filteredJobs.length === 0 && !loading" class="cc-empty">
+      <div v-if="loadError && !loading" class="cc-empty cc-empty--error">
+        <el-icon :size="32"><WarningFilled /></el-icon>
+        <span>{{ loadError }}</span>
+        <el-button size="small" @click="loadJobs">重新加载</el-button>
+      </div>
+      <div v-else-if="filteredJobs.length === 0 && !loading" class="cc-empty">
         <el-icon :size="32"><Timer /></el-icon>
         <span>暂无 Cron 任务</span>
       </div>
@@ -469,6 +474,7 @@ interface CronJob {
 
 const loading = ref(false)
 const jobs = ref<CronJob[]>([])
+const loadError = ref('')
 const searchText = ref('')
 const agentFilter = ref('')
 const triggering = ref<string | null>(null)
@@ -755,16 +761,20 @@ function runStatusLabel(status: string | undefined): string {
 
 async function loadJobs() {
   loading.value = true
+  loadError.value = ''
   try {
     const res = await fetch('/api/cron/list')
     if (res.ok) {
       const data = await res.json()
       jobs.value = data.jobs || []
     } else {
-      ElMessage.error('加载 Cron 任务失败')
+      const data = await res.json().catch(() => ({}))
+      loadError.value = data.error || '加载 Cron 任务失败，请稍后重试'
+      ElMessage.error(loadError.value)
     }
   } catch {
-    ElMessage.error('网络错误，无法加载 Cron 任务')
+    loadError.value = '网络错误，无法加载 Cron 任务'
+    ElMessage.error(loadError.value)
   } finally {
     loading.value = false
   }

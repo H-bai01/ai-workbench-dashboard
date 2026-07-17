@@ -1,4 +1,5 @@
 import { execFile, execFileSync } from 'node:child_process'
+import fs from 'node:fs'
 import path from 'node:path'
 
 const SAFE_ENV_PATH_SUFFIX = ['/opt/homebrew/bin', '/usr/local/bin']
@@ -29,6 +30,49 @@ export function commandEnvironment(baseEnv = process.env, {
   }
   result.PATH = parts.join(path.delimiter)
   return result
+}
+
+export function resolvePathCommand(command, {
+  env = process.env,
+  platform = process.platform,
+} = {}) {
+  const fallbackEnv = { ...env }
+  if (!/^[A-Za-z0-9._-]+$/.test(String(command || ''))) {
+    return { command, env: fallbackEnv }
+  }
+
+  const pathEntries = String(env?.PATH || '')
+    .split(path.delimiter)
+    .filter(entry => entry && path.isAbsolute(entry))
+  const extensions = platform === 'win32'
+    ? String(env?.PATHEXT || '.EXE;.CMD;.BAT;.COM').split(';').filter(Boolean)
+    : ['']
+
+  for (const directory of pathEntries) {
+    for (const extension of extensions) {
+      const candidate = path.resolve(directory, `${command}${extension}`)
+      try {
+        if (!fs.statSync(candidate).isFile()) continue
+        if (platform !== 'win32') fs.accessSync(candidate, fs.constants.X_OK)
+      } catch {
+        continue
+      }
+
+      const executableDirectory = path.dirname(candidate)
+      const sameDirectory = value => platform === 'win32'
+        ? path.resolve(value).toLowerCase() === executableDirectory.toLowerCase()
+        : path.resolve(value) === executableDirectory
+      return {
+        command: candidate,
+        env: {
+          ...fallbackEnv,
+          PATH: [executableDirectory, ...pathEntries.filter(entry => !sameDirectory(entry))].join(path.delimiter),
+        },
+      }
+    }
+  }
+
+  return { command, env: fallbackEnv }
 }
 
 export function assertSafeCliIdentifier(value, label = 'identifier', { maxLength = 128 } = {}) {

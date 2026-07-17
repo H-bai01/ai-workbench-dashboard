@@ -32,6 +32,7 @@ import {
   openClawControlCapability,
   optionValue,
   parseCommandTemplate,
+  resolvePathCommand,
   runFileCommand,
 } from './security/command-runner.mjs'
 import { collectSensitiveValues, createReadOnlyDoctorSandbox, doctorCommand, redactDiagnosticResult, redactSensitiveText } from './security/diagnostics.mjs'
@@ -1548,9 +1549,12 @@ function runOpenClawCommand(args, timeoutMs, { gatewayAccess = false } = {}) {
   if (os.platform() === 'win32') {
     return Promise.resolve({ success: false, stdout: '', stderr: '', error: 'Windows 的安全 OpenClaw 命令入口尚未接入' })
   }
-  return runFileCommand('openclaw', args, timeoutMs, {
-    decode: decodeBuffer,
+  const invocation = resolvePathCommand('openclaw', {
     env: openClawCommandEnvironment({ gatewayAccess }),
+  })
+  return runFileCommand(invocation.command, args, timeoutMs, {
+    decode: decodeBuffer,
+    env: invocation.env,
     allowSensitiveEnvKeys: gatewayAccess ? ['OPENCLAW_GATEWAY_TOKEN'] : [],
   })
 }
@@ -8063,18 +8067,33 @@ export const server = http.createServer(async (req, res) => {
 
       // OpenClaw 2026.6 起 jobs.json 已迁移,优先用 CLI 读取真实任务列表
       let jobs = []
+      let cliUnavailable = false
       try {
         const cliResult = await runOpenClawCommand(['cron', 'list', '--json'], 15000, { gatewayAccess: true })
         if (!cliResult.success) throw new Error(cliResult.error || cliResult.stderr || 'cron list failed')
         const parsed = JSON.parse(cliResult.stdout)
         jobs = Array.isArray(parsed) ? parsed : (parsed.jobs || [])
-      } catch (cliErr) { console.error('[cron/list] CLI fallback:', cliErr && cliErr.message) }
+      } catch {
+        cliUnavailable = true
+        console.error('[cron/list] CLI unavailable')
+      }
+      let fallbackAvailable = false
       if (jobs.length === 0) {
         try {
           const raw = fsSync.readFileSync(jobsFile, 'utf8')
           const parsed = JSON.parse(raw)
           jobs = Array.isArray(parsed) ? parsed : (parsed.jobs || [])
+          fallbackAvailable = true
         } catch { /* jobs.json 不存在或格式异常 */ }
+      }
+      if (cliUnavailable && !fallbackAvailable) {
+        res.writeHead(503, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({
+          error: 'OpenClaw 定时任务暂时无法读取，请检查 OpenClaw 运行环境后重试',
+          code: 'cron_unavailable',
+          jobs: [],
+        }))
+        return
       }
 
       // 读取 jobs-state.json（含 nextRunAtMs / lastRunStatus）
