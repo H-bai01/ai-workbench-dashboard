@@ -36,13 +36,14 @@ test('两张摘要卡片使用独立完整统计且点击可修改范围', () =>
   assert.match(dashboard, /只影响底部 Token 和费用两张卡片，不跟随页面上方时间范围。/)
 })
 
-test('三类 AI 主体统一只统计当前时间范围内有活动的对象', () => {
+test('所有已注册 AI 工具统一只统计当前时间范围内有活动的对象', () => {
   assert.match(dashboard, /function hasScopedUsageActivity\(usage: UsageDatum\): boolean/)
   for (const field of ['tokens', 'cost', 'input', 'output', 'cacheRead', 'cacheWrite']) {
     assert.match(dashboard, new RegExp(`Number\\(usage\\.${field}\\) > 0`))
   }
   assert.match(dashboard, /\.filter\(\(agent\) => hasScopedUsageActivity\(getAgentScopedUsage\(agent\)\)\)/)
-  assert.match(dashboard, /const codexRows = localAppRows\(codexApp, 'codex'\)/)
-  assert.match(dashboard, /const claudeRows = localAppRows\(claudeApp, 'claude-code'\)/)
+  assert.match(dashboard, /aiToolRegistry\.list\(\)/)
+  assert.match(dashboard, /localAppRows\(localAiUsageAppMap\.value\.get\(tool\.id\), tool\.id\)/)
+  assert.match(dashboard, /\.filter\(\(tool\) => tool\.capabilities\.monitor\)/)
   assert.doesNotMatch(dashboard, /`\$\{store\.runningAgents\.length\} 个正在干活`/)
 })

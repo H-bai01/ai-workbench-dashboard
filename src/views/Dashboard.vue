@@ -775,13 +775,13 @@
       </div>
     </section>
 
-    <!-- ========= 4. Agent 任务看板（默认收起） ========= -->
+    <!-- ========= 4. AI 工具任务看板（默认收起） ========= -->
     <section class="task-board-section" :style="{ order: pageModuleOrder('taskBoard') }">
       <div class="task-board-shell" :class="{ expanded: taskBoardExpanded }">
         <button class="task-board-toggle" type="button" @click="taskBoardExpanded = !taskBoardExpanded">
           <span class="task-board-title">
             <span class="task-board-eyebrow">任务看板</span>
-            <strong>{{ taskBoardExpanded ? '收起 OpenClaw Agent 任务区' : '展开 OpenClaw Agent 任务区' }}</strong>
+            <strong>{{ taskBoardExpanded ? '收起 AI 工具任务区' : '展开 AI 工具任务区' }}</strong>
           </span>
           <span class="task-board-summary">
             <span>总计 {{ monitorTotalObjectCount }}</span>
@@ -794,120 +794,54 @@
         </button>
 
         <main v-show="taskBoardExpanded" class="board-container">
-      <!-- 空闲列 -->
-      <div class="board-column board-column-idle">
-        <div class="board-column-header" style="border-bottom-color: #ff9f0a;">
-          <span style="color: #ff9f0a; font-weight: 700; font-size: 13px;">
-            <el-icon><VideoPause /></el-icon>
-            空闲
-          </span>
-          <el-tag size="small" style="background: rgba(255, 159, 10,0.15); color: #ff9f0a; border-color: #ff9f0a;">
-            {{ store.idleAgents.length }} 个
-          </el-tag>
-        </div>
-        <div class="board-column-tasks" v-loading="store.isPolling && store.agents.length === 0">
-          <AgentCard
-            v-for="agent in store.idleAgents"
-            :key="agent.key"
-            :agent="agent"
-            :latest-messages="store.getAgentBubbles(agent.key)"
-            @detail="onAgentDetail"
-          />
-          <el-empty v-if="store.idleAgents.length === 0 && !store.isPolling" description="暂无空闲的 Agent" :image-size="50" />
-        </div>
-      </div>
-
-      <!-- 运行中列 -->
-      <div class="board-column board-column-running">
-        <div class="board-column-header" style="border-bottom-color: #0a84ff;">
-          <span style="color: #0a84ff; font-weight: 700; font-size: 13px;">
-            <el-icon><VideoPlay /></el-icon>
-            运行中
-          </span>
-          <el-tag size="small" style="background: rgba(10, 132, 255,0.15); color: #0a84ff; border-color: #0a84ff;">
-            {{ store.runningAgents.length }} 个
-          </el-tag>
-        </div>
-        <div class="board-column-tasks">
-          <AgentCard
-            v-for="agent in store.runningAgents"
-            :key="agent.key"
-            :agent="agent"
-            :latest-messages="store.getAgentBubbles(agent.key)"
-            @detail="onAgentDetail"
-          />
-          <el-empty v-if="store.runningAgents.length === 0" description="暂无运行中的 Agent" :image-size="50" />
-        </div>
-      </div>
-
-      <!-- 已终止列 -->
-      <div class="board-column board-column-aborted">
-        <div class="board-column-header" style="border-bottom-color: #8e8e93;">
-          <span style="color: #8e8e93; font-weight: 700; font-size: 13px;">
-            <el-icon><CircleClose /></el-icon>
-            已终止
-          </span>
-          <el-tag size="small" style="background: rgba(142, 142, 147,0.15); color: #8e8e93; border-color: #8e8e93;">
-            {{ store.abortedAgents.length }} 个
-          </el-tag>
-        </div>
-        <div class="board-column-tasks">
-          <AgentCard
-            v-for="agent in store.abortedAgents"
-            :key="agent.key"
-            :agent="agent"
-            :latest-messages="store.getAgentBubbles(agent.key)"
-            @detail="onAgentDetail"
-          />
-          <el-empty v-if="store.abortedAgents.length === 0" description="暂无已终止的 Agent" :image-size="50" />
-        </div>
-      </div>
-
-      <!-- 错误列 -->
-      <div class="board-column board-column-error">
-        <div class="board-column-header" style="border-bottom-color: #ff453a;">
-          <span style="color: #ff453a; font-weight: 700; font-size: 13px;">
-            <el-icon><CircleClose /></el-icon>
-            错误
-          </span>
-          <el-tag size="small" style="background: rgba(255, 69, 58,0.15); color: #ff453a; border-color: #ff453a;">
-            {{ store.errorAgents.length }} 个
-          </el-tag>
-        </div>
-        <div class="board-column-tasks">
-          <AgentCard
-            v-for="agent in store.errorAgents"
-            :key="agent.key"
-            :agent="agent"
-            :latest-messages="store.getAgentBubbles(agent.key)"
-            @detail="onAgentDetail"
-          />
-          <el-empty v-if="store.errorAgents.length === 0" description="暂无错误的 Agent" :image-size="50" />
-        </div>
-      </div>
-
-      <!-- 未知列 -->
-      <div class="board-column board-column-unknown">
-        <div class="board-column-header" style="border-bottom-color: #98989d;">
-          <span style="color: #98989d; font-weight: 700; font-size: 13px;">
-            <el-icon><QuestionFilled /></el-icon>
-            未知
-          </span>
-          <el-tag size="small" style="background: rgba(152, 152, 157,0.15); color: #98989d; border-color: #98989d;">
-            {{ store.unknownAgents.length }} 个
-          </el-tag>
-        </div>
-        <div class="board-column-tasks">
-          <AgentCard
-            v-for="agent in store.unknownAgents"
-            :key="agent.key"
-            :agent="agent"
-            :latest-messages="store.getAgentBubbles(agent.key)"
-            @detail="onAgentDetail"
-          />
-          <el-empty v-if="store.unknownAgents.length === 0" description="暂无未知状态的 Agent" :image-size="50" />
-        </div>
-      </div>
+          <div
+            v-for="column in monitorBoardColumns"
+            :key="column.status"
+            class="board-column"
+            :class="`board-column-${column.status}`"
+          >
+            <div class="board-column-header" :style="{ borderBottomColor: column.color }">
+              <span class="board-column-label" :style="{ color: column.color }">
+                <span class="board-status-dot" :style="{ backgroundColor: column.color }" />
+                {{ column.label }}
+              </span>
+              <el-tag
+                size="small"
+                :style="{
+                  background: `${column.color}24`,
+                  color: column.color,
+                  borderColor: column.color,
+                }"
+              >
+                {{ monitorBoardRows(column.status).length }} 个
+              </el-tag>
+            </div>
+            <div
+              class="board-column-tasks"
+              v-loading="(store.isPolling || localAiUsageLoading) && monitorAllRows.length === 0"
+            >
+              <MonitorObjectCard
+                v-for="row in monitorBoardRows(column.status)"
+                :key="row.monitorKey"
+                :name="row.name"
+                :source-name="row.sourceName"
+                :source-icon-src="row.sourceIconSrc"
+                :avatar-src="row.avatarSrc"
+                :status="row.monitorStatus"
+                :status-label="row.statusLabel"
+                :last-activity-text="row.lastActivityText"
+                :project="row.project"
+                :token-text="row.tokenText"
+                :cost-text="row.costText"
+                @view="openMonitorObject(row)"
+              />
+              <el-empty
+                v-if="monitorBoardRows(column.status).length === 0 && !store.isPolling && !localAiUsageLoading"
+                :description="column.emptyText"
+                :image-size="50"
+              />
+            </div>
+          </div>
         </main>
       </div>
     </section>
@@ -1158,7 +1092,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useAgentStore, type AgentInfo } from '../stores/agent'
-import AgentCard from '../components/AgentCard.vue'
+import MonitorObjectCard from '../components/MonitorObjectCard.vue'
 import AgentDetailDrawer from '../components/AgentDetailDrawer.vue'
 import TokenDetailDialog from '../components/TokenDetailDialog.vue'
 import SessionExecutionDialog from '../components/SessionExecutionDialog.vue'
@@ -1187,6 +1121,11 @@ import { normalizeAgentAvatarSource } from '../utils/agent-presentation.mjs'
 import { createSafeRecord, ownValue, safeRecordFrom } from '../utils/safe-record.mjs'
 import { createProjectTokenScope, normalizeProjectPath, projectFolderName } from '../utils/project-token-scope.mjs'
 import { createUsageStatisticsManager } from '../utils/usage-statistics-manager.mjs'
+import {
+  createAiToolRegistry,
+  DEFAULT_AI_TOOLS,
+  type AiToolDescriptor,
+} from '../utils/ai-tool-registry.mjs'
 import type { ProjectTokenScope } from '../types/project-token-scope'
 import type { SessionObservationScope } from '../types/session-observation'
 import type { NotificationItem } from '../utils/notification-center.mjs'
@@ -1201,7 +1140,6 @@ import {
   CircleClose,
   Money,
   ArrowRight,
-  QuestionFilled,
   Briefcase,
   Folder,
   Bell,
@@ -1546,7 +1484,7 @@ interface UsageDatum {
   priceStatus?: 'configured' | 'partial' | 'unconfigured'
   billingMode?: 'per_token' | 'free' | 'subscription_monthly' | 'use_default' | 'unconfigured' | 'mixed'
 }
-type PulseAppId = 'openclaw' | 'codex' | 'claude-code'
+type PulseAppId = string
 interface LocalAiUsageItem {
   id: string
   name: string
@@ -1812,13 +1750,14 @@ const summaryUsageTimeline = ref<TimelineDay[]>([])
 const summaryUsageReady = ref(false)
 const summaryUsageLoading = ref(false)
 const localAiStatusMap = ref<Record<string, LocalAiStatusItem>>(createSafeRecord())
+const aiToolRegistry = createAiToolRegistry(DEFAULT_AI_TOOLS)
 const selectedPulseAppId = ref<PulseAppId>('openclaw')
 const pulseStatusFilter = ref<PulseStatusFilter>('all')
 const agentPulseCardEl = ref<HTMLElement | null>(null)
 const monitorObjectsDialogVisible = ref(false)
 const monitorDetailStatus = ref<MonitorStatusFilter>('all')
 const monitorShowHidden = ref(false)
-const monitorSourceFilter = ref<PulseAppId[]>(['openclaw', 'codex', 'claude-code'])
+const monitorSourceFilter = ref<PulseAppId[]>(DEFAULT_AI_TOOLS.map((tool) => tool.id))
 const monitorHiddenKeys = ref<string[]>([])
 let localAiUsageTimer: ReturnType<typeof setInterval> | null = null
 let tokenUsagePrewarmTimer: ReturnType<typeof setInterval> | null = null
@@ -3034,13 +2973,14 @@ function getLocalUsageStatusLabel(item: LocalAiUsageItem): string {
 function getPulseAvatarText(appId: PulseAppId): string {
   if (appId === 'codex') return 'Cx'
   if (appId === 'claude-code') return 'Cl'
-  return 'OC'
+  if (appId === 'openclaw') return 'OC'
+  return appId.slice(0, 2).toUpperCase()
 }
 
 function getLocalPulseAvatarSrc(appId: PulseAppId): string {
   if (appId === 'codex') return '/app-logos/chatgpt-white-black.svg'
   if (appId === 'claude-code') return '/app-logos/claude-app-orange.png'
-  return ''
+  return aiToolRegistry.get(appId)?.iconSrc || '/avatars/default.svg'
 }
 
 function localProjectFolderName(value?: string): string {
@@ -3154,19 +3094,13 @@ function sumPulseRows(rows: PulseRow[]): UsageDatum {
   }, emptyUsage())
 }
 
-function getPulseAppIconSrc(id: PulseAppId): string {
-  if (id === 'openclaw') return '/app-logos/openclaw-lobster.png'
-  if (id === 'codex') return '/app-logos/codex-app.png'
-  return '/app-logos/claude-app-orange.png'
-}
-
-function makePulseApp(id: PulseAppId, name: string, rows: PulseRow[], usage: UsageDatum, itemLabel: string, headline?: string): PulseApp {
+function makePulseApp(tool: AiToolDescriptor, rows: PulseRow[], usage: UsageDatum, headline?: string): PulseApp {
   return {
-    id,
-    name,
-    iconSrc: getPulseAppIconSrc(id),
-    headline: headline || `${rows.length} 个${itemLabel}`,
-    countText: `${rows.length} 个${itemLabel}`,
+    id: tool.id,
+    name: tool.name,
+    iconSrc: tool.iconSrc,
+    headline: headline || `${rows.length} 个${tool.objectLabel}`,
+    countText: `${rows.length} 个${tool.objectLabel}`,
     metricText: usageMetricText(usage),
     usage,
     rows,
@@ -3174,23 +3108,33 @@ function makePulseApp(id: PulseAppId, name: string, rows: PulseRow[], usage: Usa
 }
 
 const pulseApps = computed<PulseApp[]>(() => {
-  const codexApp = localAiUsageAppMap.value.get('codex')
-  const claudeApp = localAiUsageAppMap.value.get('claude-code')
-  const openclawRows = agentPulseRows.value
-  const codexRows = localAppRows(codexApp, 'codex')
-  const claudeRows = localAppRows(claudeApp, 'claude-code')
-  return [
-    makePulseApp(
-      'openclaw',
-      'OpenClaw',
-      openclawRows,
-      sumPulseRows(openclawRows),
-      'Agent',
-      `${openclawRows.filter((row) => row.agent?.status === 'running').length} 个正在干活`,
-    ),
-    makePulseApp('codex', 'Codex', codexRows, sumPulseRows(codexRows), '项目'),
-    makePulseApp('claude-code', 'Claude Code', claudeRows, sumPulseRows(claudeRows), '项目'),
-  ]
+  for (const app of localAiUsageApps.value) {
+    if (aiToolRegistry.has(app.id)) continue
+    aiToolRegistry.register({
+      id: app.id,
+      name: app.name || app.id,
+      iconSrc: '/avatars/default.svg',
+      objectLabel: app.itemLabel || '对象',
+      capabilities: {
+        monitor: true,
+        usage: true,
+        details: true,
+        sessions: true,
+      },
+    })
+  }
+
+  return aiToolRegistry.list()
+    .filter((tool) => tool.capabilities.monitor)
+    .map((tool) => {
+      const rows = tool.id === 'openclaw'
+        ? agentPulseRows.value
+        : localAppRows(localAiUsageAppMap.value.get(tool.id), tool.id)
+      const headline = tool.id === 'openclaw'
+        ? `${rows.filter((row) => row.agent?.status === 'running').length} 个正在干活`
+        : undefined
+      return makePulseApp(tool, rows, sumPulseRows(rows), headline)
+    })
 })
 
 const selectedPulseApp = computed(() => (
@@ -3239,7 +3183,7 @@ const selectedPulseEmptyText = computed(() => {
   return selectedPulseAppId.value === 'openclaw' ? '暂无 OpenClaw Agent' : '暂无本地记录'
 })
 
-const MONITOR_SOURCE_IDS: PulseAppId[] = ['openclaw', 'codex', 'claude-code']
+const DEFAULT_MONITOR_SOURCE_IDS: PulseAppId[] = DEFAULT_AI_TOOLS.map((tool) => tool.id)
 const MONITOR_OBJECT_SETTINGS_KEY = 'openclaw_dashboard_monitor_objects_v1'
 
 const monitorStatusTabs: Array<{ value: MonitorStatusFilter; label: string }> = [
@@ -3249,10 +3193,21 @@ const monitorStatusTabs: Array<{ value: MonitorStatusFilter; label: string }> = 
   { value: 'aborted', label: '已终止' },
   { value: 'error', label: '错误' },
 ]
+const monitorBoardColumns: Array<{
+  status: MonitorObjectStatus
+  label: string
+  color: string
+  emptyText: string
+}> = [
+  { status: 'idle', label: '空闲', color: '#ff9f0a', emptyText: '暂无空闲对象' },
+  { status: 'running', label: '运行中', color: '#0a84ff', emptyText: '暂无运行中对象' },
+  { status: 'aborted', label: '已终止', color: '#8e8e93', emptyText: '暂无已终止对象' },
+  { status: 'error', label: '错误', color: '#ff453a', emptyText: '暂无错误对象' },
+]
 
 function normalizeMonitorSources(raw: unknown): PulseAppId[] {
-  if (!Array.isArray(raw)) return [...MONITOR_SOURCE_IDS]
-  return raw.filter((id): id is PulseAppId => MONITOR_SOURCE_IDS.includes(id as PulseAppId))
+  if (!Array.isArray(raw)) return [...DEFAULT_MONITOR_SOURCE_IDS]
+  return raw.filter((id): id is PulseAppId => typeof id === 'string' && /^[a-z0-9][a-z0-9._-]*$/i.test(id))
 }
 
 function loadMonitorObjectSettings(): void {
@@ -3265,7 +3220,7 @@ function loadMonitorObjectSettings(): void {
       ? data.hiddenKeys.filter((key): key is string => typeof key === 'string')
       : []
   } catch {
-    monitorSourceFilter.value = [...MONITOR_SOURCE_IDS]
+    monitorSourceFilter.value = [...DEFAULT_MONITOR_SOURCE_IDS]
     monitorHiddenKeys.value = []
   }
 }
@@ -3325,6 +3280,12 @@ const monitorAllRows = computed<MonitorObjectRow[]>(() => {
 
 const monitorTotalObjectCount = computed(() => monitorAllRows.value.length)
 
+function monitorBoardRows(status: MonitorObjectStatus): MonitorObjectRow[] {
+  return monitorAllRows.value
+    .filter((row) => !row.hidden && row.monitorStatus === status)
+    .sort((a, b) => b.usageValue - a.usageValue || a.name.localeCompare(b.name, 'zh-CN'))
+}
+
 const monitorSourceOptions = computed(() => pulseApps.value.map((app) => ({
   id: app.id,
   name: app.name,
@@ -3363,11 +3324,11 @@ function toggleMonitorSource(id: PulseAppId): void {
   const current = new Set(monitorSourceFilter.value)
   if (current.has(id)) current.delete(id)
   else current.add(id)
-  monitorSourceFilter.value = MONITOR_SOURCE_IDS.filter((sourceId) => current.has(sourceId))
+  monitorSourceFilter.value = pulseApps.value.map((app) => app.id).filter((sourceId) => current.has(sourceId))
 }
 
 function showAllMonitorSources(): void {
-  monitorSourceFilter.value = [...MONITOR_SOURCE_IDS]
+  monitorSourceFilter.value = pulseApps.value.map((app) => app.id)
 }
 
 function openMonitorObjectsDialog(status: MonitorStatusFilter): void {
@@ -6367,6 +6328,21 @@ onUnmounted(() => {
   align-items: center;
   font-weight: 700;
   font-size: 13px;
+}
+
+.board-column-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.board-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: 0 0 8px currentColor;
 }
 
 .board-column-tasks {
