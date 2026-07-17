@@ -633,7 +633,10 @@ test('隔离页面保留项目聚合且文件管理入口可打开', async () =>
   const fileManagerText = await page.locator('.file-manager-dialog').innerText()
   assert.match(fileManagerText, /AI 工作目录/)
   assert.match(fileManagerText, /我的目录/)
-  assert.match(fileManagerText, /Codex、Future AI/)
+  assert.match(fileManagerText, /Codex/)
+  assert.match(fileManagerText, /Future AI/)
+  assert.equal(await page.locator('.file-manager-dialog .tool-group').count(), 2)
+  assert.equal(await page.locator('.file-manager-dialog .root-item').filter({ hasText: '共享项目' }).count(), 2)
   await page.locator('.file-manager-dialog .el-dialog__headerbtn').click()
 
   await page.locator('button.top-indicator').filter({ hasText: '网关' }).click()

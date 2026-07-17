@@ -531,6 +531,10 @@ test('文件管理允许工作目录操作并拒绝越界与符号链接', async
   fs.writeFileSync(ordinaryNamedFile, '{"mode":"local"}')
   const ordinaryRead = await request(frontendPort, '/api/file-manager/read', sameOriginJson({ path: ordinaryNamedFile }))
   assert.equal(ordinaryRead.status, 200)
+  const directoryRead = await request(frontendPort, '/api/file-manager/read', sameOriginJson({ path: workspace }))
+  assert.equal(directoryRead.status, 200)
+  const describedEntry = JSON.parse(directoryRead.body).entries.find(entry => entry.name === path.basename(ordinaryNamedFile))
+  assert.equal(describedEntry.desc, '结构化配置或数据文件')
   assert.match(ordinaryRead.body, /local/)
 
   const tree = await request(frontendPort, '/api/file-manager/tree')

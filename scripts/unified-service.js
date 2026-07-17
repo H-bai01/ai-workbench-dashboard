@@ -86,6 +86,7 @@ import { GPT56_BILLING_MODELS, mergeBillingConfigWithDefaults, mergePriceStatus 
 import { installPrivacyConsole, installProcessErrorPrivacy } from '../src/utils/log-privacy.mjs'
 import { createOpenClawUpdateStatus } from '../src/utils/openclaw-version.mjs'
 import {
+  describeManagedEntry,
   discoverFileManagerRoots,
   pickerCommand,
   readManualFileRoots,
@@ -7385,7 +7386,7 @@ export const server = http.createServer(async (req, res) => {
       path: displayUserPath(resolved),
       name: path.basename(resolved),
       cn: path.basename(resolved),
-      desc: stat.isDirectory() ? '目录' : '文件',
+      desc: describeManagedEntry({ name: path.basename(resolved), isDir: stat.isDirectory() }),
       usedBy: [],
       exists: true,
       isDir: stat.isDirectory(),

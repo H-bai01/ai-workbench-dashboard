@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import {
+  describeManagedEntry,
   discoverFileManagerRoots,
   pickerCommand,
   readManualFileRoots,
@@ -77,6 +78,14 @@ test('旧 Agent 输入会转换为统一 AI 工作目录记录', () => {
     contextType: 'agent',
   })
   fs.rmSync(root, { recursive: true, force: true })
+})
+
+test('常见 AI 与项目文件提供可靠的中文用途说明', () => {
+  assert.equal(describeManagedEntry({ name: 'AGENTS.md' }), 'AI 在这个目录中遵循的工作规则和协作说明')
+  assert.equal(describeManagedEntry({ name: 'package.json' }), 'Node.js 项目信息、运行命令和依赖配置')
+  assert.equal(describeManagedEntry({ name: 'src', isDir: true }), '项目的主要源代码')
+  assert.equal(describeManagedEntry({ name: 'session.jsonl' }), '按行记录的结构化数据，常用于会话或事件记录')
+  assert.equal(describeManagedEntry({ name: 'unknown.bin' }), '项目文件；具体用途需结合所属项目确认')
 })
 
 test('重命名只接受单个安全名称', () => {

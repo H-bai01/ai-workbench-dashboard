@@ -2,7 +2,7 @@
   <el-dialog
     v-model="visible"
     title="文件管理"
-    width="1180px"
+    width="min(1420px, 96vw)"
     top="5vh"
     class="file-manager-dialog"
     destroy-on-close
@@ -23,22 +23,25 @@
         <div v-else class="root-list">
           <section class="root-section">
             <div class="root-section-title">AI 工作目录</div>
-            <div v-if="aiRoots.length === 0" class="root-section-empty">暂未识别到 AI 工作目录</div>
-            <button
-              v-for="root in aiRoots"
-              :key="root.id + root.path"
-              type="button"
-              class="root-item"
-              :class="{ active: activeRoot?.path === root.path }"
-              @click="openRoot(root)"
-            >
-              <el-icon><Folder /></el-icon>
-              <span class="root-copy">
-                <strong>{{ root.name }}</strong>
-                <small>{{ sourceLabel(root) }}</small>
-                <small class="mono">{{ root.path }}</small>
-              </span>
-            </button>
+            <div v-if="aiToolGroups.length === 0" class="root-section-empty">暂未识别到 AI 工作目录</div>
+            <div v-for="group in aiToolGroups" :key="group.toolId" class="tool-group">
+              <div class="tool-group-title">{{ group.toolName }}</div>
+              <button
+                v-for="item in group.roots"
+                :key="item.viewKey"
+                type="button"
+                class="root-item"
+                :class="{ active: activeViewKey === item.viewKey }"
+                @click="openRoot(item.root, item.viewKey)"
+              >
+                <el-icon><Folder /></el-icon>
+                <span class="root-copy">
+                  <strong>{{ item.root.name }}</strong>
+                  <small>{{ item.contextLabel }}</small>
+                  <small class="mono">{{ item.root.path }}</small>
+                </span>
+              </button>
+            </div>
           </section>
 
           <section class="root-section">
@@ -49,8 +52,8 @@
               :key="root.id + root.path"
               type="button"
               class="root-item"
-              :class="{ active: activeRoot?.path === root.path }"
-              @click="openRoot(root)"
+              :class="{ active: activeViewKey === `manual:${root.path}` }"
+              @click="openRoot(root, `manual:${root.path}`)"
             >
               <el-icon><Folder /></el-icon>
               <span class="root-copy">
@@ -89,6 +92,13 @@
             <div v-else-if="!currentPath" class="empty-state">请先选择左侧目录。</div>
             <div v-else-if="entries.length === 0" class="empty-state">这个目录是空的。</div>
             <div v-else class="entry-list">
+              <div class="entry-header" aria-hidden="true">
+                <span></span>
+                <span>名称</span>
+                <span>说明</span>
+                <span>大小</span>
+                <span>修改时间</span>
+              </div>
               <button
                 v-for="entry in entries"
                 :key="entry.path"
@@ -104,6 +114,7 @@
                   <Document v-else />
                 </el-icon>
                 <span class="entry-name">{{ entry.name }}</span>
+                <span class="entry-description">{{ entry.desc }}</span>
                 <span class="entry-kind">{{ entry.isDir ? '目录' : formatSize(entry.size) }}</span>
                 <span class="entry-time">{{ formatTime(entry.mtime) }}</span>
               </button>
@@ -119,6 +130,10 @@
                   <p class="mono">{{ selected.path }}</p>
                 </div>
                 <el-tag size="small">{{ selected.isDir ? '目录' : formatSize(selected.size) }}</el-tag>
+              </div>
+              <div class="detail-description">
+                <span>说明</span>
+                <p>{{ selected.desc }}</p>
               </div>
 
               <div class="action-row">
@@ -196,8 +211,19 @@ interface FileEntry {
   isDir: boolean
   binary?: boolean
   image?: boolean
+  desc: string
   size?: number | null
   mtime?: number
+}
+
+interface AiToolGroup {
+  toolId: string
+  toolName: string
+  roots: Array<{
+    root: FileRoot
+    viewKey: string
+    contextLabel: string
+  }>
 }
 
 interface FileContent {
@@ -220,7 +246,35 @@ const visible = computed({
 const roots = ref<FileRoot[]>([])
 const aiRoots = computed(() => roots.value.filter(root => root.source === 'ai'))
 const manualRoots = computed(() => roots.value.filter(root => root.source === 'manual'))
+const aiToolGroups = computed<AiToolGroup[]>(() => {
+  const groups = new Map<string, AiToolGroup>()
+  for (const root of aiRoots.value) {
+    const sourcesByTool = new Map<string, NonNullable<FileRoot['sources']>>()
+    for (const source of root.sources || []) {
+      const toolId = source.toolId || source.toolName
+      const current = sourcesByTool.get(toolId) || []
+      current.push(source)
+      sourcesByTool.set(toolId, current)
+    }
+    for (const [toolId, sources] of sourcesByTool) {
+      let group = groups.get(toolId)
+      if (!group) {
+        group = { toolId, toolName: sources[0]?.toolName || 'AI 工具', roots: [] }
+        groups.set(toolId, group)
+      }
+      const contextNames = [...new Set(sources.map(source => source.contextName).filter(Boolean))]
+      const contextType = sources.some(source => source.contextType === 'agent') ? 'Agent 工作目录' : '项目工作目录'
+      group.roots.push({
+        root,
+        viewKey: `ai:${toolId}:${root.path}`,
+        contextLabel: contextNames.length ? contextNames.join('、') : contextType,
+      })
+    }
+  }
+  return [...groups.values()]
+})
 const activeRoot = ref<FileRoot | null>(null)
+const activeViewKey = ref('')
 const currentPath = ref('')
 const entries = ref<FileEntry[]>([])
 const selected = ref<FileEntry | null>(null)
@@ -264,13 +318,6 @@ function jsonPost(body: Record<string, unknown> = {}): RequestInit {
   }
 }
 
-function sourceLabel(root: FileRoot) {
-  const labels = (root.sources || []).map(source => (
-    source.contextName ? `${source.toolName} · ${source.contextName}` : source.toolName
-  ))
-  return [...new Set(labels)].join('、') || 'AI 工作目录'
-}
-
 function failure(action: string, error: unknown, target = selected.value?.path || currentPath.value) {
   const reason = error instanceof Error ? error.message : '操作未完成'
   store.addNotification({
@@ -292,12 +339,19 @@ async function loadRoots(preferredPath = '') {
   try {
     const payload = await requestJson<{ roots: FileRoot[] }>('/api/file-manager/tree')
     roots.value = payload.roots || []
-    const next = roots.value.find(root => root.path === preferredPath)
+    const preferredRoot = roots.value.find(root => root.path === preferredPath)
       || roots.value.find(root => root.path === activeRoot.value?.path)
-      || roots.value[0]
-    if (next) await openRoot(next)
+    const firstAiItem = aiToolGroups.value[0]?.roots[0]
+    const nextRoot = preferredRoot || firstAiItem?.root || manualRoots.value[0]
+    const nextViewKey = preferredRoot
+      ? (activeViewKey.value || (preferredRoot.source === 'manual'
+          ? `manual:${preferredRoot.path}`
+          : `ai:${preferredRoot.sources?.[0]?.toolId || 'ai'}:${preferredRoot.path}`))
+      : firstAiItem?.viewKey || (nextRoot ? `manual:${nextRoot.path}` : '')
+    if (nextRoot) await openRoot(nextRoot, nextViewKey)
     else {
       activeRoot.value = null
+      activeViewKey.value = ''
       currentPath.value = ''
       entries.value = []
     }
@@ -308,8 +362,9 @@ async function loadRoots(preferredPath = '') {
   }
 }
 
-async function openRoot(root: FileRoot) {
+async function openRoot(root: FileRoot, viewKey = '') {
   activeRoot.value = root
+  activeViewKey.value = viewKey || `${root.source}:${root.path}`
   await loadDirectory(root.path)
 }
 
@@ -388,7 +443,10 @@ async function removeRoot(root: FileRoot) {
     })
     await requestJson('/api/file-manager/remove-root', jsonPost({ path: root.path }))
     ElMessage.success('目录已移除')
-    if (activeRoot.value?.path === root.path) activeRoot.value = null
+    if (activeRoot.value?.path === root.path) {
+      activeRoot.value = null
+      activeViewKey.value = ''
+    }
     await loadRoots()
   } catch (error) {
     if (error === 'cancel' || error === 'close') return
@@ -542,6 +600,9 @@ function formatTime(value?: number) {
 .root-list { display: flex; flex-direction: column; gap: 16px; }
 .root-section { display: flex; flex-direction: column; gap: 8px; }
 .root-section-title { color: var(--el-text-color-secondary); font-size: 12px; font-weight: 700; letter-spacing: .04em; }
+.tool-group { display: flex; flex-direction: column; gap: 7px; padding-left: 8px; border-left: 2px solid rgba(64,158,255,.28); }
+.tool-group + .tool-group { margin-top: 8px; }
+.tool-group-title { color: var(--el-text-color-primary); font-size: 13px; font-weight: 700; }
 .root-section-empty { padding: 10px 6px; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.5; }
 .root-item { width: 100%; display: flex; align-items: flex-start; gap: 9px; padding: 11px; border: 1px solid var(--el-border-color); border-radius: 9px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
 .root-item:hover, .root-item.active { border-color: var(--el-color-primary); background: rgba(64,158,255,.10); }
@@ -551,18 +612,24 @@ function formatTime(value?: number) {
 .browser-panel { min-width: 0; display: flex; flex-direction: column; }
 .directory-toolbar { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--el-border-color); }
 .current-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--el-text-color-secondary); }
-.workspace-grid { display: grid; grid-template-columns: minmax(300px, .9fr) minmax(360px, 1.1fr); min-height: 626px; }
+.workspace-grid { display: grid; grid-template-columns: minmax(520px, 1.2fr) minmax(360px, .8fr); min-height: 626px; }
 .entry-panel { min-width: 0; border-right: 1px solid var(--el-border-color); overflow: auto; max-height: 626px; }
 .entry-list { padding: 8px; }
-.entry-row { width: 100%; display: grid; grid-template-columns: 24px minmax(0, 1fr) 74px 128px; align-items: center; gap: 8px; padding: 9px 8px; border: 0; border-radius: 7px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.entry-header, .entry-row { width: 100%; display: grid; grid-template-columns: 24px minmax(120px, .75fr) minmax(180px, 1.25fr) 70px 118px; align-items: center; gap: 8px; box-sizing: border-box; }
+.entry-header { padding: 4px 8px 8px; color: var(--el-text-color-secondary); font-size: 12px; border-bottom: 1px solid var(--el-border-color); }
+.entry-row { padding: 9px 8px; border: 0; border-radius: 7px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
 .entry-row:hover, .entry-row.active { background: rgba(64,158,255,.11); }
 .entry-icon { color: var(--el-color-primary); }
 .entry-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.entry-description { overflow: hidden; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
 .entry-kind, .entry-time { color: var(--el-text-color-secondary); font-size: 12px; text-align: right; }
 .detail-panel { min-width: 0; padding: 16px; overflow: auto; max-height: 626px; }
 .detail-heading { display: flex; justify-content: space-between; gap: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--el-border-color); }
 .detail-heading > div { min-width: 0; }
 .detail-heading p { overflow-wrap: anywhere; }
+.detail-description { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--el-border-color); }
+.detail-description span { color: var(--el-text-color-secondary); font-size: 12px; }
+.detail-description p { margin: 0; line-height: 1.55; }
 .action-row { display: flex; flex-wrap: wrap; gap: 7px; padding: 12px 0; }
 .text-preview, .image-preview, .binary-preview, .editor-card { border: 1px solid var(--el-border-color); border-radius: 9px; overflow: hidden; }
 .text-preview { max-height: 440px; overflow: auto; background: #111318; }
