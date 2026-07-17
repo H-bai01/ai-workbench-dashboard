@@ -231,6 +231,14 @@ before(async () => {
     const isUsagePrewarm = url.searchParams.get('prewarm') === '1'
       && (url.pathname === '/api/local-ai-usage' || url.pathname === '/api/cost-timeline')
     if (isUsagePrewarm) prewarmRequests.add(`${url.pathname}?${url.searchParams.toString()}`)
+    if (
+      snapshotScenario === 'disconnect'
+      && !isUsagePrewarm
+      && (url.pathname === '/api/local-ai-usage' || url.pathname === '/api/cost-timeline')
+    ) {
+      await route.abort('connectionrefused')
+      return
+    }
     if (url.pathname === '/api/agent-avatar/custom-agent') {
       await route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1X1 })
       return
@@ -488,13 +496,13 @@ test('刷新失败保留上一份完整快照并可重试为新的完整结果',
   await notificationButton.click()
   const usageNotification = page.locator('.notif-item').filter({ hasText: '费用统计' }).first()
   await usageNotification.waitFor({ state: 'visible' })
-  assert.match(await usageNotification.innerText(), /完整统计加载失败/)
+  assert.match(await usageNotification.innerText(), /费用统计加载失败/)
   await usageNotification.click()
   const notificationDialog = page.locator('.notification-detail-dialog')
   await notificationDialog.waitFor({ state: 'visible' })
   assert.match(await notificationDialog.innerText(), /通知详情/)
-  assert.match(await notificationDialog.innerText(), /Token 与费用总览/)
-  assert.match(await notificationDialog.innerText(), /usage_snapshot_load_failed/)
+  assert.match(await notificationDialog.innerText(), /Token 与费用统计/)
+  assert.match(await notificationDialog.innerText(), /usage_statistics_failed/)
   assert.match(await notificationDialog.innerText(), /7 天范围的数据未更新/)
   assert.match(await notificationDialog.innerText(), /上一份已经完成的统计结果/)
   assert.match(await notificationButton.innerText(), /无新通知/)
@@ -528,13 +536,30 @@ test('刷新失败保留上一份完整快照并可重试为新的完整结果',
   assert.equal(await page.evaluate(() => localStorage.getItem('ai_workbench_dashboard_notifications_v1')), null)
 })
 
+test('统计服务重启断线时保留完整快照且不产生费用统计错误通知', async () => {
+  snapshotScenario = 'default'
+  await page.locator('.token-mini-ranges .token-mini-chip').filter({ hasText: /^今天$/ }).click()
+  await page.locator('.cockpit-inner > .el-loading-mask').waitFor({ state: 'hidden' })
+  const previousKpi = await page.locator('.token-kpi-row').innerText()
+
+  snapshotScenario = 'disconnect'
+  await page.locator('.token-mini-ranges .token-mini-chip').filter({ hasText: /^7 天$/ }).click()
+  await page.locator('.cockpit-inner > .el-loading-mask').waitFor({ state: 'hidden' })
+  assert.equal(await page.locator('.token-kpi-row').innerText(), previousKpi)
+  assert.equal(
+    await page.evaluate(() => JSON.parse(localStorage.getItem('ai_workbench_dashboard_notifications_v1') || '[]').length),
+    0,
+  )
+  assert.match(await page.locator('.top-indicator-notif').innerText(), /无新通知/)
+})
+
 test('后台缓存刷新完成后页面自动取回新结果', async () => {
   snapshotScenario = 'background'
   backgroundRefreshRequests = 0
   await page.locator('.token-mini-ranges .token-mini-chip').filter({ hasText: /^3 天$/ }).click()
   const refreshing = page.locator('.usage-snapshot-refreshing')
   await refreshing.waitFor({ state: 'visible' })
-  assert.match(await page.locator('.token-kpi-row').innerText(), /当前 Token\s*3,400/)
+  await page.waitForFunction(() => /当前 Token\s*3,400/.test(document.querySelector('.token-kpi-row')?.textContent || ''))
   await refreshing.waitFor({ state: 'hidden', timeout: 15000 })
   assert.equal(backgroundRefreshRequests, 2)
   assert.match(await page.locator('.token-kpi-row').innerText(), /当前 Token\s*3,900/)

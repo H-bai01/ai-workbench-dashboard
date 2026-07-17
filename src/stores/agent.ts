@@ -149,18 +149,59 @@ export const useAgentStore = defineStore('agent', () => {
     persistNotifications(notificationStorage(), notifications.value)
   }
 
-  function addNotification(n: NotificationInput) {
+  function addNotification(n: NotificationInput): boolean {
     const notification = normalizeNotification({
       ...n,
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       timestamp: Date.now(),
       read: false,
     })
-    if (!notification) return
+    if (!notification) return false
     notifications.value.unshift(notification)
     // 上限 50 条
     if (notifications.value.length > 50) notifications.value = notifications.value.slice(0, 50)
     saveNotifications()
+    return true
+  }
+
+  function addNotificationOnce(
+    n: NotificationInput,
+    options: { dedupeWindowMs?: number; now?: number } = {},
+  ): boolean {
+    const now = Number.isFinite(options.now) ? Number(options.now) : Date.now()
+    const dedupeWindowMs = Number.isFinite(options.dedupeWindowMs)
+      ? Math.max(0, Number(options.dedupeWindowMs))
+      : 10 * 60 * 1000
+    const persisted = loadPersistedNotifications(notificationStorage(), now)
+    const merged = new Map<string, NotificationItem>()
+    for (const item of [...persisted, ...notifications.value]) merged.set(item.id, item)
+    notifications.value = [...merged.values()]
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 50)
+
+    const duplicate = notifications.value.some(item => (
+      item.errorCode === n.errorCode
+      && item.source === n.source
+      && item.timeRange === n.timeRange
+      && now - item.timestamp >= 0
+      && now - item.timestamp <= dedupeWindowMs
+    ))
+    if (duplicate) {
+      saveNotifications()
+      return false
+    }
+
+    const notification = normalizeNotification({
+      ...n,
+      id: `${now}-${Math.random().toString(36).slice(2, 8)}`,
+      timestamp: now,
+      read: false,
+    }, { now })
+    if (!notification) return false
+    notifications.value.unshift(notification)
+    if (notifications.value.length > 50) notifications.value = notifications.value.slice(0, 50)
+    saveNotifications()
+    return true
   }
   function markNotificationRead(id: string) {
     let changed = false
@@ -1453,6 +1494,7 @@ export const useAgentStore = defineStore('agent', () => {
     notifications,
     unreadNotifications,
     addNotification,
+    addNotificationOnce,
     markNotificationRead,
     markAllNotificationsRead,
     clearNotifications,

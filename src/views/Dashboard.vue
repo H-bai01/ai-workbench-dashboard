@@ -1186,6 +1186,7 @@ import { setDefaultAvatar } from '../utils/avatarFallback'
 import { normalizeAgentAvatarSource } from '../utils/agent-presentation.mjs'
 import { createSafeRecord, ownValue, safeRecordFrom } from '../utils/safe-record.mjs'
 import { createProjectTokenScope, normalizeProjectPath, projectFolderName } from '../utils/project-token-scope.mjs'
+import { createUsageStatisticsManager } from '../utils/usage-statistics-manager.mjs'
 import type { ProjectTokenScope } from '../types/project-token-scope'
 import type { SessionObservationScope } from '../types/session-observation'
 import type { NotificationItem } from '../utils/notification-center.mjs'
@@ -1224,6 +1225,9 @@ const isBeta = computed(() => /beta/i.test(APP_VERSION))
 
 
 const store = useAgentStore()
+const usageStatisticsManager = createUsageStatisticsManager({
+  notify: (notification, options) => store.addNotificationOnce(notification, options),
+})
 
 // Real-time clock in status bar (updates every minute)
 const currentTime = ref('')
@@ -1493,7 +1497,6 @@ async function retryNotification(notification: NotificationItem): Promise<void> 
     if (notification.retryAction === 'refresh-token-usage') {
       succeeded = await refreshTokenUsageSnapshot({ blocking: true, force: true })
     } else if (notification.retryAction === 'prewarm-token-usage') {
-      tokenUsagePrewarmErrorNotified = false
       succeeded = await prewarmTokenUsageRanges()
     }
     if (succeeded) {
@@ -1794,7 +1797,6 @@ const tokenMiniTimeline = ref<TimelineDay[]>([])
 const tokenUsageSnapshotLoading = ref(false)
 const tokenUsageSnapshotBlocking = ref(true)
 const tokenUsageSnapshotReady = ref(false)
-const tokenUsageErrorNotified = ref(false)
 const tokenUsageSnapshotServerRefreshing = ref(false)
 const tokenUsageSnapshotRange = ref<TokenMiniRangeValue>(DEFAULT_TOKEN_MINI_RANGE)
 const tokenUsageSnapshotCustomRange = ref<[string, string] | null>(null)
@@ -1809,7 +1811,6 @@ const summaryUsagePublishedRange = ref<SummaryUsageRangeValue>(DEFAULT_SUMMARY_U
 const summaryUsageTimeline = ref<TimelineDay[]>([])
 const summaryUsageReady = ref(false)
 const summaryUsageLoading = ref(false)
-const summaryUsageErrorNotified = ref(false)
 const localAiStatusMap = ref<Record<string, LocalAiStatusItem>>(createSafeRecord())
 const selectedPulseAppId = ref<PulseAppId>('openclaw')
 const pulseStatusFilter = ref<PulseStatusFilter>('all')
@@ -1822,7 +1823,6 @@ const monitorHiddenKeys = ref<string[]>([])
 let localAiUsageTimer: ReturnType<typeof setInterval> | null = null
 let tokenUsagePrewarmTimer: ReturnType<typeof setInterval> | null = null
 let tokenUsagePrewarmInFlight: Promise<boolean> | null = null
-let tokenUsagePrewarmErrorNotified = false
 let tokenUsageSnapshotRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let tokenUsageSnapshotRequestId = 0
 let tokenUsageSnapshotAbortController: AbortController | null = null
@@ -2208,47 +2208,22 @@ function prewarmTokenUsageRanges(): Promise<boolean> {
   if (tokenUsagePrewarmInFlight) return tokenUsagePrewarmInFlight
 
   const task = (async () => {
-    let firstError = ''
     for (const option of TOKEN_MINI_RANGES) {
       const { timelineUrl, localUsageUrl } = tokenUsageRequestUrls(option.value, null, { prewarm: true })
-      try {
-        const [timelineResponse, localUsageResponse] = await Promise.all([
-          fetch(timelineUrl),
-          fetch(localUsageUrl),
-        ])
-        const [timelineData, localUsageData] = await Promise.all([
-          timelineResponse.json().catch(() => ({})),
-          localUsageResponse.json().catch(() => ({})),
-        ])
-        if (!timelineResponse.ok || !localUsageResponse.ok || timelineData.error || localUsageData.error) {
-          throw new Error(timelineData.error || localUsageData.error || '后台缓存更新失败')
-        }
-      } catch (error) {
-        if (!firstError) firstError = error instanceof Error ? error.message : '后台缓存更新失败'
-        if (firstError.startsWith('模型识别失败：')) break
+      const result = await usageStatisticsManager.load({
+        timelineUrl,
+        localUsageUrl,
+        scopeKey: `usage:${option.value}`,
+        rangeLabel: option.label,
+        hasPublishedData: tokenUsageSnapshotReady.value,
+        prewarm: true,
+      })
+      if (!result.ok) {
+        if (result.failure?.kind === 'model_error') return false
+        if (result.failure?.kind !== 'service_unavailable') return false
       }
     }
-
-    if (firstError) {
-      if (!tokenUsagePrewarmErrorNotified) {
-        tokenUsagePrewarmErrorNotified = true
-        store.addNotification({
-          type: 'error',
-          agentId: 'usage-prewarm',
-          agentName: '费用统计',
-          message: firstError.startsWith('模型识别失败：') ? firstError : '后台缓存更新失败',
-          source: '费用统计后台缓存',
-          detail: firstError.startsWith('模型识别失败：') ? firstError : '后台预加载完整统计时未能完成全部时间范围的读取。',
-          errorCode: firstError.startsWith('模型识别失败：') ? 'usage_model_unrecognized' : 'usage_prewarm_failed',
-          impact: '部分时间范围首次打开时可能仍需要等待完整统计。',
-          currentResult: '已经成功生成的缓存和当前页面数据保持不变。',
-          retryAction: 'prewarm-token-usage',
-        })
-      }
-    } else {
-      tokenUsagePrewarmErrorNotified = false
-    }
-    return !firstError
+    return true
   })().finally(() => {
     if (tokenUsagePrewarmInFlight === task) tokenUsagePrewarmInFlight = null
   })
@@ -2275,18 +2250,18 @@ async function refreshTokenUsageSnapshot(options: { blocking?: boolean, force?: 
   tokenUsageSnapshotLoading.value = true
   tokenUsageSnapshotBlocking.value = blocking
   try {
-    const [timelineResponse, localUsageResponse] = await Promise.all([
-      fetch(timelineUrl, { signal: controller.signal }),
-      fetch(localUsageUrl, { signal: controller.signal }),
-    ])
-    const [timelineData, localUsageData] = await Promise.all([
-      timelineResponse.json().catch(() => ({})),
-      localUsageResponse.json().catch(() => ({})),
-    ])
-    if (!timelineResponse.ok || !localUsageResponse.ok || timelineData.error || localUsageData.error) {
-      throw new Error(timelineData.error || localUsageData.error || '完整统计加载失败')
-    }
+    const result = await usageStatisticsManager.load({
+      timelineUrl,
+      localUsageUrl,
+      signal: controller.signal,
+      scopeKey: `usage:${range}`,
+      rangeLabel: tokenUsageRangeDescription(range, customRange),
+      hasPublishedData: tokenUsageSnapshotReady.value,
+    })
+    if (!result.ok) return false
     if (requestId !== tokenUsageSnapshotRequestId) return false
+    const timelineData = result.timelineData || {}
+    const localUsageData = result.localUsageData || {}
 
     // Vue 会在同一轮更新中提交这三项，页面不会先展示 OpenClaw 的部分结果。
     tokenMiniTimeline.value = Array.isArray(timelineData.timeline) ? timelineData.timeline : []
@@ -2295,59 +2270,21 @@ async function refreshTokenUsageSnapshot(options: { blocking?: boolean, force?: 
     tokenUsageSnapshotRange.value = range
     tokenUsageSnapshotCustomRange.value = customRange ? [...customRange] : null
     tokenUsageSnapshotReady.value = true
-    const cacheState = localUsageData?.cache
+    const cacheState = localUsageData?.cache as {
+      refreshing?: boolean
+      refreshFailed?: boolean
+    } | undefined
     tokenUsageSnapshotServerRefreshing.value = cacheState?.refreshing === true
-    if (cacheState?.refreshFailed === true) {
-      if (!tokenUsageErrorNotified.value) {
-        tokenUsageErrorNotified.value = true
-        store.addNotification({
-          type: 'error',
-          agentId: 'usage-summary',
-          agentName: '费用统计',
-          message: '后台更新失败，当前数据未更新',
-          source: 'Token 与费用总览',
-          detail: '后台刷新没有生成新的完整统计结果。',
-          errorCode: 'usage_background_refresh_failed',
-          impact: `${tokenUsageRangeDescription(range, customRange)}范围的数据未更新。`,
-          currentResult: '页面继续显示上一份已经完成的统计结果。',
-          timeRange: tokenUsageRangeDescription(range, customRange),
-          retryAction: 'refresh-token-usage',
-        })
-      }
-    } else if (cacheState?.refreshing === true) {
-      tokenUsageErrorNotified.value = false
+    if (cacheState?.refreshFailed !== true && cacheState?.refreshing === true) {
       tokenUsageSnapshotRefreshTimer = setTimeout(() => {
         tokenUsageSnapshotRefreshTimer = null
         if (requestId === tokenUsageSnapshotRequestId) void refreshTokenUsageSnapshot()
       }, 10 * 1000)
-    } else {
-      tokenUsageErrorNotified.value = false
     }
-    return cacheState?.refreshFailed !== true
-  } catch (error) {
+    return result.refreshFailed !== true
+  } catch {
     if (controller.signal.aborted || requestId !== tokenUsageSnapshotRequestId) return false
     tokenUsageSnapshotServerRefreshing.value = false
-    if (!tokenUsageErrorNotified.value) {
-      tokenUsageErrorNotified.value = true
-      const errorMessage = error instanceof Error && error.message.startsWith('模型识别失败：')
-        ? error.message
-        : '完整统计加载失败'
-      store.addNotification({
-        type: 'error',
-        agentId: 'usage-summary',
-        agentName: '费用统计',
-        message: errorMessage,
-        source: 'Token 与费用总览',
-        detail: errorMessage.startsWith('模型识别失败：') ? errorMessage : '完整统计请求未能成功完成。',
-        errorCode: errorMessage.startsWith('模型识别失败：') ? 'usage_model_unrecognized' : 'usage_snapshot_load_failed',
-        impact: `${tokenUsageRangeDescription(range, customRange)}范围的数据未更新。`,
-        currentResult: tokenUsageSnapshotReady.value
-          ? '页面继续显示上一份已经完成的统计结果。'
-          : '当前还没有可以显示的完整统计结果。',
-        timeRange: tokenUsageRangeDescription(range, customRange),
-        retryAction: 'refresh-token-usage',
-      })
-    }
     return false
   } finally {
     if (requestId === tokenUsageSnapshotRequestId) {
@@ -2368,18 +2305,25 @@ async function refreshSummaryUsage(): Promise<boolean> {
   summaryUsageLoading.value = true
 
   try {
-    const [timelineResponse, localUsageResponse] = await Promise.all([
-      fetch(timelineUrl, { signal: controller.signal }),
-      fetch(localUsageUrl, { signal: controller.signal }),
-    ])
-    const [timelineData, localUsageData] = await Promise.all([
-      timelineResponse.json().catch(() => ({})),
-      localUsageResponse.json().catch(() => ({})),
-    ])
-    if (!timelineResponse.ok || !localUsageResponse.ok || timelineData.error || localUsageData.error) {
-      throw new Error(timelineData.error || localUsageData.error || '摘要统计加载失败')
+    const rangeLabel = SUMMARY_USAGE_RANGES.find((option) => option.value === range)?.label || '本月'
+    const result = await usageStatisticsManager.load({
+      timelineUrl,
+      localUsageUrl,
+      signal: controller.signal,
+      scopeKey: `usage:${range}`,
+      rangeLabel,
+      hasPublishedData: summaryUsageReady.value,
+    })
+    if (!result.ok) {
+      if (summaryUsageReady.value) {
+        summaryUsageRange.value = summaryUsagePublishedRange.value
+        saveSummaryUsageRangePreference()
+      }
+      return false
     }
     if (requestId !== summaryUsageRequestId) return false
+    const timelineData = result.timelineData || {}
+    const localUsageData = result.localUsageData || {}
 
     const openClawTimeline = Array.isArray(timelineData.timeline) ? timelineData.timeline : []
     const localTimeline = Array.isArray(localUsageData.timeline) ? localUsageData.timeline : []
@@ -2387,33 +2331,12 @@ async function refreshSummaryUsage(): Promise<boolean> {
       .filter((day) => isTimelineDateInRange(day.date, range))
     summaryUsagePublishedRange.value = range
     summaryUsageReady.value = true
-    summaryUsageErrorNotified.value = false
-    return true
-  } catch (error) {
+    return result.refreshFailed !== true
+  } catch {
     if (controller.signal.aborted || requestId !== summaryUsageRequestId) return false
     if (summaryUsageReady.value) {
       summaryUsageRange.value = summaryUsagePublishedRange.value
       saveSummaryUsageRangePreference()
-    }
-    if (!summaryUsageErrorNotified.value) {
-      summaryUsageErrorNotified.value = true
-      const message = error instanceof Error && error.message.startsWith('模型识别失败：')
-        ? error.message
-        : '摘要统计加载失败'
-      store.addNotification({
-        type: 'error',
-        agentId: 'summary-usage',
-        agentName: '费用统计',
-        message,
-        source: '底部 Token 与费用摘要',
-        detail: message.startsWith('模型识别失败：') ? message : '独立摘要时间范围未能完成统计。',
-        errorCode: message.startsWith('模型识别失败：') ? 'usage_model_unrecognized' : 'summary_usage_load_failed',
-        impact: '底部两张摘要卡片未更新。',
-        currentResult: summaryUsageReady.value
-          ? '继续显示上一份已经完成的摘要结果。'
-          : '当前还没有可以显示的完整摘要结果。',
-        timeRange: SUMMARY_USAGE_RANGES.find((option) => option.value === range)?.label || '本月',
-      })
     }
     return false
   } finally {
