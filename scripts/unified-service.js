@@ -8,6 +8,7 @@ import http from 'http'
 import https from 'https'
 import fs from 'fs/promises'
 import fsSync from 'fs'
+import crypto from 'node:crypto'
 import path from 'path'
 import os from 'os'
 import readline from 'readline'
@@ -55,7 +56,6 @@ import {
   safeAtomicWriteFileWithinRoots,
   safeWriteFileWithinRoots,
 } from './security/path-boundary.mjs'
-import { assertNonSensitiveFilePath, sensitiveFileReason } from './security/sensitive-files.mjs'
 import { normalizeGithubProxy, publicElectricityPerHour } from './security/public-settings.mjs'
 import {
   findManagedSkillPaths,
@@ -85,6 +85,14 @@ import { createSessionObservationStore } from './session-observation.mjs'
 import { GPT56_BILLING_MODELS, mergeBillingConfigWithDefaults, mergePriceStatus } from './billing-config.mjs'
 import { installPrivacyConsole, installProcessErrorPrivacy } from '../src/utils/log-privacy.mjs'
 import { createOpenClawUpdateStatus } from '../src/utils/openclaw-version.mjs'
+import {
+  discoverFileManagerRoots,
+  pickerCommand,
+  readManualFileRoots,
+  resolveOpenClawLocations,
+  validateFileName,
+  writeManualFileRoots,
+} from './file-manager-config.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -100,15 +108,16 @@ if (process.env.OPENCLAW_SKIP_DOTENV !== '1') {
   dotenv.config({ path: path.join(__dirname, '..', '.env'), quiet: true })
 }
 
-// OpenClaw 数据目录
-const OPENCLAW_DIR = path.join(process.env.USERPROFILE || process.env.HOME || os.homedir(), '.openclaw')
+// OpenClaw 数据目录：跟随当前用户和显式配置，不写死部署者路径。
+const OPENCLAW_LOCATIONS = resolveOpenClawLocations({ env: process.env, homeDir: os.homedir() })
+const OPENCLAW_DIR = OPENCLAW_LOCATIONS.stateDir
 const AGENTS_DIR = path.join(OPENCLAW_DIR, 'agents')
 const VOICE_DATA_DIR = path.join(OPENCLAW_DIR, 'dashboard-voice')
 const VOICE_SAMPLES_DIR = path.join(VOICE_DATA_DIR, 'samples')
 const VOICE_PROFILES_FILE = path.join(VOICE_DATA_DIR, 'voices.json')
 const QUICK_MESSAGE_CONFIG_FILE = path.join(OPENCLAW_DIR, 'dashboard-quick-message.json')
-const HOME_DIR = os.homedir()
-const OPENCLAW_CONFIG_PATH = path.join(OPENCLAW_DIR, 'openclaw.json')
+const HOME_DIR = OPENCLAW_LOCATIONS.homeDir
+const OPENCLAW_CONFIG_PATH = OPENCLAW_LOCATIONS.configPath
 const OLLAMA_URL = String(process.env.OPENCLAW_OLLAMA_URL || 'http://127.0.0.1:11434').replace(/\/$/, '')
 const LOCAL_TOKEN = getOrCreateLocalToken()
 const LOCAL_REQUEST_POLICY = createLocalRequestPolicy(process.env)
@@ -594,12 +603,8 @@ function applyCodexProcessFallback(statuses, processes, now) {
 function getDashboardFileRoots() {
   const roots = [
     ...getConfiguredOpenClawAgents().map(agent => agent.workspace).filter(Boolean),
+    ...readManualFileRoots({ stateDir: OPENCLAW_DIR }),
   ]
-  const envRoots = String(process.env.OPENCLAW_DASHBOARD_FILE_ROOTS || '')
-    .split(path.delimiter)
-    .map(expandUserPath)
-    .filter(Boolean)
-  roots.push(...envRoots)
 
   const unique = []
   for (const root of roots) {
@@ -7292,29 +7297,103 @@ export const server = http.createServer(async (req, res) => {
   // GET  /api/file-manager/tree      → 文件清单（带中文说明）
   // POST /api/file-manager/read      → 读取文件内容（body: { path }）
   // ============================================
-  const FILE_MANAGER_EDITABLE_EXTS = ['.md', '.json', '.py', '.txt', '.yaml', '.yml', '.sh', '.js', '.ts', '.env']
+  const FILE_MANAGER_IMAGE_TYPES = new Map([
+    ['.png', 'image/png'], ['.jpg', 'image/jpeg'], ['.jpeg', 'image/jpeg'],
+    ['.webp', 'image/webp'], ['.gif', 'image/gif'], ['.svg', 'image/svg+xml'],
+  ])
+  const fileManagerSelections = server.fileManagerSelections || new Map()
+  server.fileManagerSelections = fileManagerSelections
 
-  // 通用文件接口只允许 Agent 工作空间和部署者显式根，不开放 ~/.openclaw 内部数据。
+  function currentFileManagerRoots() {
+    return discoverFileManagerRoots({
+      agents: getConfiguredOpenClawAgents(),
+      manualRoots: readManualFileRoots({ stateDir: OPENCLAW_DIR }),
+    })
+  }
+
+  // 文件接口只操作自动识别或用户确认添加的根目录。
   function resolveSafePath(p, { mustExist = false } = {}) {
     if (!p || typeof p !== 'string') throw new Error('invalid path')
-    const resolved = resolvePathWithinRoots(expandUserPath(p), getDashboardFileRoots(), { mustExist })
-    assertNonSensitiveFilePath(resolved)
+    return resolvePathWithinRoots(expandUserPath(p), getDashboardFileRoots(), { mustExist })
+  }
+
+  function assertMutableFileManagerPath(filePath) {
+    const resolved = resolveSafePath(filePath, { mustExist: true })
+    const isRoot = currentFileManagerRoots().some(root => path.resolve(root.path) === path.resolve(resolved))
+    if (isRoot) throw new Error('不能修改文件管理根目录本身')
     return resolved
   }
 
-  function resolveManagedBackupPath(backupPath, targetPath, { mustExist = false } = {}) {
-    const target = resolveSafePath(targetPath)
-    const backup = resolvePathWithinRoots(expandUserPath(backupPath), getDashboardFileRoots(), { mustExist })
-    const escapedTarget = path.basename(target).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const expected = new RegExp(`^${escapedTarget}\\.bak\\.\\d{10,17}$`)
-    if (path.dirname(backup) !== path.dirname(target) || !expected.test(path.basename(backup))) {
-      throw new Error('备份文件与目标文件不匹配')
+  function fileManagerEntry(filePath) {
+    const resolved = resolveSafePath(filePath, { mustExist: true })
+    const stat = fsSync.lstatSync(resolved)
+    if (stat.isSymbolicLink()) throw new Error('不允许访问符号链接')
+    const ext = path.extname(resolved).toLowerCase()
+    return {
+      path: displayUserPath(resolved),
+      name: path.basename(resolved),
+      cn: path.basename(resolved),
+      desc: stat.isDirectory() ? '目录' : '文件',
+      usedBy: [],
+      exists: true,
+      isDir: stat.isDirectory(),
+      binary: stat.isFile() && !isProbablyTextFile(resolved),
+      image: stat.isFile() && FILE_MANAGER_IMAGE_TYPES.has(ext),
+      size: stat.isFile() ? stat.size : null,
+      entries: stat.isDirectory() ? fsSync.readdirSync(resolved).length : null,
+      mtime: stat.mtimeMs,
     }
-    if (mustExist) {
-      const stat = fsSync.lstatSync(backup)
-      if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('备份必须是普通文件')
+  }
+
+  function isProbablyTextFile(filePath) {
+    const stat = fsSync.statSync(filePath)
+    if (!stat.isFile()) return false
+    const fd = fsSync.openSync(filePath, 'r')
+    try {
+      const sample = Buffer.alloc(Math.min(stat.size, 8192))
+      const read = fsSync.readSync(fd, sample, 0, sample.length, 0)
+      return !sample.subarray(0, read).includes(0)
+    } finally {
+      fsSync.closeSync(fd)
     }
-    return backup
+  }
+
+  function runSystemPicker(kind) {
+    const selected = pickerCommand(process.platform, kind)
+    return new Promise((resolve, reject) => {
+      execFile(selected.command, selected.args, {
+        env: commandEnvironment(),
+        timeout: 10 * 60 * 1000,
+        maxBuffer: 16 * 1024,
+        windowsHide: true,
+      }, (error, stdout) => {
+        if (error) {
+          if ([1, 2].includes(Number(error.code))) {
+            resolve('')
+            return
+          }
+          reject(new Error('系统文件选择窗口无法打开'))
+          return
+        }
+        resolve(String(stdout || '').trim().replace(/[\\/]$/, ''))
+      })
+    })
+  }
+
+  function rememberFileManagerSelection(selectedPath, kind) {
+    const selectionId = crypto.randomUUID()
+    fileManagerSelections.set(selectionId, { path: selectedPath, kind, expiresAt: Date.now() + 5 * 60 * 1000 })
+    for (const [id, value] of fileManagerSelections) {
+      if (value.expiresAt < Date.now()) fileManagerSelections.delete(id)
+    }
+    return selectionId
+  }
+
+  function consumeFileManagerSelection(selectionId, kind) {
+    const selected = fileManagerSelections.get(String(selectionId || ''))
+    fileManagerSelections.delete(String(selectionId || ''))
+    if (!selected || selected.kind !== kind || selected.expiresAt < Date.now()) throw new Error('文件选择已失效，请重新选择')
+    return selected.path
   }
 
   function fileItem(filePath, cn, desc, usedBy = [], extra = {}) {
@@ -7324,7 +7403,7 @@ export const server = http.createServer(async (req, res) => {
       desc,
       usedBy,
       ...extra,
-      sensitive: Boolean(extra.sensitive || sensitiveFileReason(filePath)),
+      sensitive: false,
     }
   }
 
@@ -7344,35 +7423,6 @@ export const server = http.createServer(async (req, res) => {
         fileItem(path.join(root, 'HEARTBEAT.md'), '心跳清单', 'Agent 的待处理事项或心跳任务', usedBy),
         fileItem(path.join(root, 'MEMORY.md'), '长期记忆', '该 Agent 的长期记忆文件', usedBy),
         fileItem(path.join(root, 'openclaw-workspace-state.json'), '工作空间状态', 'OpenClaw 记录的工作空间状态', usedBy),
-      ],
-    }
-  }
-
-  function buildLegacyClawdCategory() {
-    const legacy = path.join(HOME_DIR, 'clawd')
-    if (!fsSync.existsSync(legacy)) return null
-    return {
-      name: '兼容旧工作目录',
-      rootDesc: `${displayUserPath(legacy)}，仅在该目录真实存在时显示`,
-      groups: [
-        {
-          name: '常见文件',
-          items: [
-            fileItem(legacy, '旧工作目录', '兼容旧版 OpenClaw / 开发者工作区', ['旧版 OpenClaw'], { isDir: true }),
-            ...['IDENTITY.md', 'SOUL.md', 'USER.md', 'AGENTS.md', 'TOOLS.md', 'HEARTBEAT.md', 'MEMORY.md', 'skills-lock.json']
-              .map(name => fileItem(path.join(legacy, name), name, '旧工作目录中的常见配置文件', ['旧版 OpenClaw'])),
-          ],
-        },
-        {
-          name: '常见子目录',
-          items: [
-            fileItem(path.join(legacy, 'agents'), 'Agent 子目录', '旧版按角色划分的 Agent 配置', ['旧版 OpenClaw'], { isDir: true }),
-            fileItem(path.join(legacy, 'admin'), '管理目录', '旧版项目、定时任务和管理文件', ['旧版 OpenClaw'], { isDir: true }),
-            fileItem(path.join(legacy, 'admin', 'projects'), '项目档案目录', '旧版项目看板数据目录', ['项目看板'], { isDir: true }),
-            fileItem(path.join(legacy, 'memory'), '记忆目录', '旧版长期记忆 markdown 文件', ['旧版 OpenClaw'], { isDir: true }),
-            fileItem(path.join(legacy, 'scripts'), '脚本目录', '旧版自动化脚本', ['旧版 OpenClaw'], { isDir: true }),
-          ],
-        },
       ],
     }
   }
@@ -7421,11 +7471,103 @@ export const server = http.createServer(async (req, res) => {
 
   if (pathname === '/api/file-manager/tree' && req.method === 'GET') {
     try {
-      res.writeHead(200, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ categories: enrichManifest() }))
+      const roots = currentFileManagerRoots().map(root => ({
+        ...root,
+        path: displayUserPath(root.path),
+      }))
+      sendJson(res, 200, { ok: true, roots, categories: enrichManifest() })
     } catch (e) {
-      res.writeHead(500, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ error: e.message }))
+      sendJson(res, 500, { ok: false, error: e.message })
+    }
+    return
+  }
+
+  if (pathname === '/api/file-manager/select-root' && req.method === 'POST') {
+    try {
+      const selectedPath = await runSystemPicker('folder')
+      if (!selectedPath) {
+        sendJson(res, 200, { ok: true, cancelled: true })
+        return
+      }
+      const stat = fsSync.lstatSync(selectedPath)
+      if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error('请选择真实目录')
+      const real = fsSync.realpathSync.native(selectedPath)
+      const roots = readManualFileRoots({ stateDir: OPENCLAW_DIR })
+      writeManualFileRoots({ stateDir: OPENCLAW_DIR, roots: [...roots, real] })
+      sendJson(res, 200, { ok: true, root: { path: displayUserPath(real), name: path.basename(real), source: 'manual' } })
+    } catch (e) {
+      sendJson(res, 400, { ok: false, error: e.message })
+    }
+    return
+  }
+
+  if (pathname === '/api/file-manager/remove-root' && req.method === 'POST') {
+    try {
+      const { path: requestedPath } = await readJsonRequest(req, 64 * 1024)
+      const target = resolveSafePath(requestedPath, { mustExist: true })
+      const manualRoots = readManualFileRoots({ stateDir: OPENCLAW_DIR })
+      if (!manualRoots.some(root => path.resolve(root) === path.resolve(target))) throw new Error('只能移除手动添加的目录')
+      writeManualFileRoots({ stateDir: OPENCLAW_DIR, roots: manualRoots.filter(root => path.resolve(root) !== path.resolve(target)) })
+      sendJson(res, 200, { ok: true })
+    } catch (e) {
+      sendJson(res, 400, { ok: false, error: e.message })
+    }
+    return
+  }
+
+  if (pathname === '/api/file-manager/select-replacement' && req.method === 'POST') {
+    try {
+      const selectedPath = await runSystemPicker('file')
+      if (!selectedPath) {
+        sendJson(res, 200, { ok: true, cancelled: true })
+        return
+      }
+      const stat = fsSync.lstatSync(selectedPath)
+      if (stat.isSymbolicLink() || !stat.isFile()) throw new Error('请选择普通文件')
+      const real = fsSync.realpathSync.native(selectedPath)
+      const selectionId = rememberFileManagerSelection(real, 'replacement')
+      sendJson(res, 200, { ok: true, selectionId, name: path.basename(real), size: stat.size })
+    } catch (e) {
+      sendJson(res, 400, { ok: false, error: e.message })
+    }
+    return
+  }
+
+  if (pathname === '/api/file-manager/select-destination' && req.method === 'POST') {
+    try {
+      const selectedPath = await runSystemPicker('folder')
+      if (!selectedPath) {
+        sendJson(res, 200, { ok: true, cancelled: true })
+        return
+      }
+      const real = resolveSafePath(selectedPath, { mustExist: true })
+      if (!fsSync.statSync(real).isDirectory()) throw new Error('请选择管理范围内的目录')
+      const selectionId = rememberFileManagerSelection(real, 'destination')
+      sendJson(res, 200, { ok: true, selectionId, name: path.basename(real), path: displayUserPath(real) })
+    } catch (e) {
+      sendJson(res, 400, { ok: false, error: e.message })
+    }
+    return
+  }
+
+  if (pathname === '/api/file-manager/content' && req.method === 'GET') {
+    try {
+      const real = resolveSafePath(url.searchParams.get('path') || '', { mustExist: true })
+      const stat = fsSync.lstatSync(real)
+      const contentType = FILE_MANAGER_IMAGE_TYPES.get(path.extname(real).toLowerCase())
+      if (stat.isSymbolicLink() || !stat.isFile() || !contentType) throw new Error('该文件不支持图片预览')
+      const buffer = fsSync.readFileSync(real)
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        'Content-Length': buffer.length,
+        'Cache-Control': 'no-store',
+        'Content-Security-Policy': "default-src 'none'; sandbox",
+        'X-Content-Type-Options': 'nosniff',
+        'Referrer-Policy': 'no-referrer',
+      })
+      res.end(buffer)
+    } catch (e) {
+      sendJson(res, 400, { ok: false, error: e.message })
     }
     return
   }
@@ -7477,60 +7619,44 @@ export const server = http.createServer(async (req, res) => {
   }
 
   if (pathname === '/api/file-manager/read' && req.method === 'POST') {
-    let body = ''
-    req.on('data', c => { body += c })
-    req.on('end', () => {
-      try {
-        const { path: p } = JSON.parse(body)
+    try {
+        const { path: p } = await readJsonRequest(req)
         const real = resolveSafePath(p, { mustExist: true })
-        const stat = fsSync.statSync(real)
+        const stat = fsSync.lstatSync(real)
+        if (stat.isSymbolicLink()) throw new Error('不允许访问符号链接')
         if (stat.isDirectory()) {
-          // 目录 → 返回前 50 个子项
-          const safeEntries = fsSync.readdirSync(real)
-            .filter(name => {
-              try { resolveSafePath(path.join(real, name), { mustExist: true }); return true } catch { return false }
+          const entries = fsSync.readdirSync(real)
+            .map(name => {
+              try { return fileManagerEntry(path.join(real, name)) } catch { return null }
             })
-          const list = safeEntries.slice(0, 50)
-          res.writeHead(200, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ type: 'dir', entries: list, totalCount: safeEntries.length }))
+            .filter(Boolean)
+            .sort((a, b) => Number(b.isDir) - Number(a.isDir) || a.name.localeCompare(b.name, 'zh-CN'))
+          sendJson(res, 200, { type: 'dir', path: displayUserPath(real), entries, totalCount: entries.length })
           return
         }
-        const MAX = 512 * 1024 // 512KB 上限
-        if (stat.size > MAX) {
-          res.writeHead(200, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ type: 'too_large', size: stat.size, message: `文件 ${(stat.size / 1024).toFixed(1)} KB 超过 512KB 预览上限` }))
-          return
-        }
-        // 简单 binary 检测：扩展名或内容含 NUL
         const ext = path.extname(real).toLowerCase()
-        const binaryExts = ['.sqlite', '.sqlite-shm', '.sqlite-wal', '.db', '.png', '.jpg', '.jpeg', '.gif', '.zip', '.tar', '.gz', '.exe', '.dylib']
-        if (binaryExts.includes(ext)) {
-          res.writeHead(200, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ type: 'binary', size: stat.size, message: `二进制文件（${ext}）不支持预览` }))
+        if (!isProbablyTextFile(real)) {
+          const image = FILE_MANAGER_IMAGE_TYPES.has(ext)
+          sendJson(res, 200, {
+            type: image ? 'image' : 'binary',
+            size: stat.size,
+            ext,
+            previewUrl: image ? `/api/file-manager/content?path=${encodeURIComponent(displayUserPath(real))}` : '',
+            message: image ? '图片预览' : '该文件可使用系统程序打开或替换',
+          })
           return
         }
-        let content = fsSync.readFileSync(real, 'utf-8')
-        if (content.includes('\x00')) {
-          res.writeHead(200, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ type: 'binary', size: stat.size, message: '检测到二进制内容（含 NUL 字节）' }))
-          return
-        }
-        if (['.json', '.yaml', '.yml'].includes(ext)) {
-          content = redactSensitiveText(content, [GATEWAY_CREDENTIALS.token, LOCAL_TOKEN])
-        }
-        res.writeHead(200, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({
+        const content = fsSync.readFileSync(real, 'utf-8')
+        sendJson(res, 200, {
           type: 'text',
           size: stat.size,
           mtime: stat.mtimeMs,
           ext,
           content,
-        }))
-      } catch (e) {
-        res.writeHead(400, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ type: 'error', error: e.message }))
-      }
-    })
+        })
+    } catch (e) {
+      sendJson(res, 400, { type: 'error', error: e.message })
+    }
     return
   }
 
@@ -7538,33 +7664,14 @@ export const server = http.createServer(async (req, res) => {
   // Sprint 4: 文件写入 API
   // ============================================
 
-  // POST /api/file-manager/write — 写入文件（含自动备份）
+  // POST /api/file-manager/write — 写入文本文件
   if (pathname === '/api/file-manager/write' && req.method === 'POST') {
-    let body = ''
-    req.on('data', d => { body += d })
-    req.on('end', () => {
-      try {
-        const { path: p, content } = JSON.parse(body)
+    try {
+        const { path: p, content } = await readJsonRequest(req)
         if (typeof content !== 'string') throw new Error('content must be string')
-        const MAX_WRITE = 512 * 1024
-        if (content.length > MAX_WRITE) throw new Error(`内容超过 512KB 上限（${(content.length/1024).toFixed(1)}KB）`)
-
-        const real = resolveSafePath(p)
+        const real = assertMutableFileManagerPath(p)
+        if (!fsSync.statSync(real).isFile() || !isProbablyTextFile(real)) throw new Error('只有文本文件可以直接编辑')
         const roots = getDashboardFileRoots()
-
-        const ext = path.extname(real).toLowerCase()
-        if (!FILE_MANAGER_EDITABLE_EXTS.includes(ext)) throw new Error(`不允许编辑 ${ext} 类型文件`)
-
-        // 自动备份（仅文件存在时）
-        let backupPath = null
-        try {
-          if (fsSync.existsSync(real)) {
-            const ts = Date.now()
-            backupPath = `${real}.bak.${ts}`
-            safeWriteFileWithinRoots(backupPath, fsSync.readFileSync(real), roots, { mode: 0o600 })
-          }
-        } catch { /* 备份失败不影响写入 */ }
-
         safeWriteFileWithinRoots(real, content, roots, { encoding: 'utf8', mode: 0o600 })
 
         // 检测是否 IDENTITY.md（建议 agent reset）
@@ -7576,98 +7683,80 @@ export const server = http.createServer(async (req, res) => {
           resetHint = owner?.id || null
         }
 
-        res.writeHead(200, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ ok: true, backupPath, resetHint, writtenBytes: content.length }))
-      } catch (e) {
-        res.writeHead(400, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ ok: false, error: e.message }))
-      }
-    })
-    return
-  }
-
-  // ============================================
-  // #16: 文件备份管理 API
-  // ============================================
-
-  // GET /api/file-manager/backups?path=... — 列出某文件的所有备份（.bak.{ts} 格式）
-  if (pathname === '/api/file-manager/backups' && req.method === 'GET') {
-    try {
-      const rawPath = url.searchParams.get('path') || ''
-      if (!rawPath) {
-        res.writeHead(400, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ ok: false, error: 'path 参数必填' }))
-        return
-      }
-      const real = resolveSafePath(rawPath)
-      const dir = path.dirname(real)
-      const base = path.basename(real)
-      const backups = []
-      try {
-        const files = fsSync.readdirSync(dir)
-        for (const f of files) {
-          // 备份文件格式：{base}.bak.{timestamp}
-          if (new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.bak\\.\\d+$`).test(f)) {
-            const tsStr = f.slice(base.length + 5) // ".bak." = 5 chars
-            const ts = parseInt(tsStr, 10)
-            if (!isNaN(ts)) {
-              const fullPath = resolveManagedBackupPath(path.join(dir, f), real, { mustExist: true })
-              const stat = fsSync.lstatSync(fullPath)
-              backups.push({
-                path: fullPath,
-                displayPath: displayUserPath(fullPath),
-                ts,
-                date: new Date(ts).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }),
-                size: stat.size,
-              })
-            }
-          }
-        }
-        // 最新的排在前面
-        backups.sort((a, b) => b.ts - a.ts)
-      } catch { /* 目录不存在 */ }
-      res.writeHead(200, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ ok: true, backups, count: backups.length }))
+        sendJson(res, 200, { ok: true, resetHint, writtenBytes: Buffer.byteLength(content) })
     } catch (e) {
-      res.writeHead(500, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ ok: false, error: e.message }))
+      sendJson(res, 400, { ok: false, error: e.message })
     }
     return
   }
 
-  // POST /api/file-manager/restore — 从备份恢复（将 backupPath 复制回 targetPath）
-  // body: { backupPath, targetPath }
-  if (pathname === '/api/file-manager/restore' && req.method === 'POST') {
-    let body = ''
-    req.on('data', chunk => { body += chunk })
-    req.on('end', () => {
+  if (pathname === '/api/file-manager/replace' && req.method === 'POST') {
+    try {
+      const { path: targetPath, selectionId } = await readJsonRequest(req, 64 * 1024)
+      const target = assertMutableFileManagerPath(targetPath)
+      if (!fsSync.statSync(target).isFile()) throw new Error('只能替换文件')
+      const source = consumeFileManagerSelection(selectionId, 'replacement')
+      const sourceStat = fsSync.lstatSync(source)
+      if (sourceStat.isSymbolicLink() || !sourceStat.isFile()) throw new Error('替换来源必须是普通文件')
+      const parent = path.dirname(target)
+      const temp = path.join(parent, `.${path.basename(target)}.${process.pid}.${Date.now()}.replace`)
+      const roots = getDashboardFileRoots()
       try {
-        const { backupPath, targetPath } = JSON.parse(body)
-        if (!backupPath || !targetPath) {
-          res.writeHead(400, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ ok: false, error: 'backupPath 和 targetPath 必填' }))
-          return
-        }
-        const realTgt = resolveSafePath(targetPath)
-        const realBak = resolveManagedBackupPath(backupPath, realTgt, { mustExist: true })
-        const expectedBackup = new RegExp(`^${path.basename(realTgt).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.bak\\.\\d+$`)
-        if (path.dirname(realBak) !== path.dirname(realTgt) || !expectedBackup.test(path.basename(realBak))) {
-          throw new Error('备份文件与目标文件不匹配')
-        }
-        // 恢复前先备份当前文件
-        if (fsSync.existsSync(realTgt)) {
-          safeWriteFileWithinRoots(`${realTgt}.bak.${Date.now()}`, fsSync.readFileSync(realTgt), getDashboardFileRoots(), { mode: 0o600 })
-        }
-        safeWriteFileWithinRoots(realTgt, fsSync.readFileSync(realBak), getDashboardFileRoots(), { mode: 0o600 })
-        console.log(`[file-manager/restore] ${realBak} → ${realTgt}`)
-        res.writeHead(200, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ ok: true, restored: displayUserPath(realTgt) }))
-      } catch (e) {
-        console.error('[file-manager/restore] error:', e.message)
-        res.writeHead(500, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ ok: false, error: e.message }))
+        safeWriteFileWithinRoots(temp, fsSync.readFileSync(source), roots, { mode: sourceStat.mode & 0o777 || 0o600 })
+        fsSync.renameSync(temp, target)
+      } finally {
+        try { if (fsSync.existsSync(temp)) fsSync.unlinkSync(temp) } catch { /* best-effort cleanup */ }
       }
-    })
+      sendJson(res, 200, { ok: true, path: displayUserPath(target) })
+    } catch (e) {
+      sendJson(res, 400, { ok: false, error: e.message })
+    }
+    return
+  }
+
+  if (pathname === '/api/file-manager/delete' && req.method === 'POST') {
+    try {
+      const { path: targetPath } = await readJsonRequest(req, 64 * 1024)
+      const target = assertMutableFileManagerPath(targetPath)
+      fsSync.rmSync(target, { recursive: true, force: false })
+      sendJson(res, 200, { ok: true })
+    } catch (e) {
+      sendJson(res, 400, { ok: false, error: e.message })
+    }
+    return
+  }
+
+  if (pathname === '/api/file-manager/rename' && req.method === 'POST') {
+    try {
+      const { path: targetPath, name } = await readJsonRequest(req, 64 * 1024)
+      const target = assertMutableFileManagerPath(targetPath)
+      const destination = resolveSafePath(path.join(path.dirname(target), validateFileName(name)))
+      if (fsSync.existsSync(destination)) throw new Error('同名文件或目录已存在')
+      fsSync.renameSync(target, destination)
+      sendJson(res, 200, { ok: true, path: displayUserPath(destination) })
+    } catch (e) {
+      sendJson(res, 400, { ok: false, error: e.message })
+    }
+    return
+  }
+
+  if (pathname === '/api/file-manager/move' && req.method === 'POST') {
+    try {
+      const { path: targetPath, selectionId } = await readJsonRequest(req, 64 * 1024)
+      const target = assertMutableFileManagerPath(targetPath)
+      const destinationDir = consumeFileManagerSelection(selectionId, 'destination')
+      const safeDestinationDir = resolveSafePath(destinationDir, { mustExist: true })
+      if (!fsSync.statSync(safeDestinationDir).isDirectory()) throw new Error('目标必须是目录')
+      if (fsSync.statSync(target).isDirectory() && isPathInside(safeDestinationDir, target)) {
+        throw new Error('不能把目录移动到其自身内部')
+      }
+      const destination = resolveSafePath(path.join(safeDestinationDir, path.basename(target)))
+      if (fsSync.existsSync(destination)) throw new Error('目标目录已有同名项目')
+      fsSync.renameSync(target, destination)
+      sendJson(res, 200, { ok: true, path: displayUserPath(destination) })
+    } catch (e) {
+      sendJson(res, 400, { ok: false, error: e.message })
+    }
     return
   }
 

@@ -604,11 +604,11 @@
 
         <!-- 文件管理 -->
         <div class="action-slot action-slot--primary" :style="{ order: statusBarOrder('fileManager') }">
-          <button class="action-btn" @click="showSealedFeature('文件管理')">
+          <button class="action-btn" @click="fileManagerVisible = true">
             <el-icon :size="22"><Folder /></el-icon>
             <div class="action-text">
               <div class="action-label">文件管理</div>
-              <div class="action-value">暂时停用</div>
+              <div class="action-value">管理工作目录</div>
             </div>
           </button>
         </div>
@@ -1125,6 +1125,8 @@
     <!-- ActivityTimelineDialog 已改为内联时间线区域，保留弹窗备用（从命令面板打开）-->
     <ActivityTimelineDialog v-model="activityTimelineVisible" />
 
+    <FileManagerDialog v-model="fileManagerVisible" />
+
     <NotificationDetailDialog
       v-model="notificationDetailVisible"
       :notification="selectedNotification"
@@ -1168,6 +1170,7 @@ import ProjectBoardDialog from '../components/ProjectBoardDialog.vue'
 import CronCenterDialog from '../components/CronCenterDialog.vue'
 import CommandPaletteDialog from '../components/CommandPaletteDialog.vue'
 import ActivityTimelineDialog from '../components/ActivityTimelineDialog.vue'
+import FileManagerDialog from '../components/FileManagerDialog.vue'
 import NotificationDetailDialog from '../components/NotificationDetailDialog.vue'
 import ChangelogPanel from '../components/ChangelogPanel.vue'
 import QuickMsgFab from '../components/QuickMsgFab.vue'
@@ -1468,6 +1471,7 @@ const cronCenterVisible = ref(false)
 // Sprint 7: 命令面板 + 活动时间线弹窗备用（命令面板打开）
 const commandPaletteVisible = ref(false)
 const activityTimelineVisible = ref(false)
+const fileManagerVisible = ref(false)
 const notificationPopoverVisible = ref(false)
 const notificationDetailVisible = ref(false)
 const selectedNotification = ref<NotificationItem | null>(null)
@@ -3732,7 +3736,7 @@ function handlePaletteAction(key: string) {
     case 'projects':     projectBoardVisible.value = true; break
     case 'cron':         cronCenterVisible.value = true; break
     case 'timeline':     activityTimelineVisible.value = true; break
-    case 'fileManager':  showSealedFeature('文件管理'); break
+    case 'fileManager':  fileManagerVisible.value = true; break
     case 'billing':      billingDialogVisible.value = true; break
     case 'skills':       skillsDialogVisible.value = true; break
     case 'token':        openTokenDetail(); break

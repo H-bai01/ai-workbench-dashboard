@@ -380,8 +380,8 @@ test('同源代理注入本地 token，合法功能不再误报 401', async () =
   })
 
   const readFile = await request(frontendPort, '/api/file-manager/read', sameOriginJson({ path: memoryFile }))
-  assert.equal(readFile.status, 503)
-  assert.match(readFile.body, /暂时停用/)
+  assert.equal(readFile.status, 200)
+  assert.match(readFile.body, /临时测试/)
 })
 
 test('核心监控、搜索和项目产出响应统一精确遮蔽已知秘密', async () => {
@@ -491,25 +491,9 @@ test('OpenClaw doctor 已封存且不会修改被监控目录', async () => {
   assert.equal(result.body.includes(gatewaySecret), false)
 })
 
-test('通用文件管理所有入口均封存且不能执行真实操作', async () => {
-  const untouched = path.join(workspace, 'sealed-file-manager.md')
+test('文件管理允许工作目录操作并拒绝越界与符号链接', async () => {
+  const untouched = path.join(workspace, 'managed-file.md')
   fs.writeFileSync(untouched, 'unchanged')
-  const calls = [
-    ['/api/file-manager/tree', {}],
-    ['/api/file-manager/read', sameOriginJson({ path: untouched })],
-    ['/api/file-manager/write', sameOriginJson({ path: untouched, content: 'changed' })],
-    ['/api/file-manager/reveal', sameOriginJson({ path: untouched, mode: 'open' })],
-    [`/api/file-manager/backups?path=${encodeURIComponent(untouched)}`, {}],
-    ['/api/file-manager/restore', sameOriginJson({ backupPath: `${untouched}.bak`, targetPath: untouched })],
-  ]
-  for (const [requestPath, options] of calls) {
-    const response = await request(frontendPort, requestPath, options)
-    assert.equal(response.status, 503, requestPath)
-    assert.match(response.body, /暂时停用/, requestPath)
-  }
-  assert.equal(fs.readFileSync(untouched, 'utf8'), 'unchanged')
-  if (process.env.OPENCLAW_RUN_ARCHIVED_FILE_MANAGER_TESTS !== '1') return
-
   const outsideFile = path.join(outside, 'outside.txt')
   fs.writeFileSync(outsideFile, 'outside-unchanged')
   const fileLink = path.join(workspace, 'file-link.md')
@@ -536,94 +520,32 @@ test('通用文件管理所有入口均封存且不能执行真实操作', async
     assert.equal(response.status, 400, candidate)
   }
 
-  const newFile = path.join(workspace, 'new-safe-file.md')
-  const write = await request(frontendPort, '/api/file-manager/write', sameOriginJson({ path: newFile, content: '# safe\n' }))
+  const write = await request(frontendPort, '/api/file-manager/write', sameOriginJson({ path: untouched, content: '# safe\n' }))
   assert.equal(write.status, 200)
-  assert.equal(fs.readFileSync(newFile, 'utf8'), '# safe\n')
+  assert.equal(fs.readFileSync(untouched, 'utf8'), '# safe\n')
   assert.equal(fs.readFileSync(outsideFile, 'utf8'), 'outside-unchanged')
 
-  const agentPrivateDir = path.join(openclawDir, 'agents', 'test-agent', 'agent')
-  const agentSessionsDir = path.join(openclawDir, 'agents', 'test-agent', 'sessions')
-  const serviceEnvDir = path.join(openclawDir, 'service-env')
-  const browserDir = path.join(openclawDir, 'browser', 'openclaw', 'user-data')
-  const logsDir = path.join(openclawDir, 'logs')
-  fs.mkdirSync(agentPrivateDir, { recursive: true })
-  fs.mkdirSync(agentSessionsDir, { recursive: true })
-  fs.mkdirSync(serviceEnvDir, { recursive: true })
-  fs.mkdirSync(browserDir, { recursive: true })
-  fs.mkdirSync(logsDir, { recursive: true })
-  const additionalSensitiveFiles = [
-    path.join(openclawDir, 'dashboard-gateway-token'),
-    path.join(openclawDir, '.env'),
-    path.join(openclawDir, 'credentials.json'),
-    path.join(openclawDir, 'device-auth.json'),
-    path.join(openclawDir, 'gateway.log'),
-    path.join(openclawDir, 'openclaw.json.bak'),
-    path.join(openclawDir, 'openclaw.json.bak.1'),
-    path.join(openclawDir, 'openclaw.json.old'),
-    path.join(openclawDir, 'openclaw.json.orig'),
-    path.join(openclawDir, 'openclaw.json-backup-20260711'),
-    path.join(openclawDir, 'auth-profiles.json.20260711.bak'),
-    path.join(openclawDir, 'auth-state.json.old'),
-    path.join(openclawDir, 'models.json.bak-2'),
-    path.join(openclawDir, 'sessions.json.bak.1'),
-    path.join(openclawDir, 'gateway.log.2'),
-    path.join(openclawDir, 'history.jsonl.gz'),
-    path.join(openclawDir, '.npmrc'),
-    path.join(openclawDir, '.netrc'),
-    path.join(openclawDir, 'id_ed25519'),
-    path.join(openclawDir, 'server-private.key'),
-    path.join(openclawDir, 'client.pem'),
-    path.join(openclawDir, 'identity.p12'),
-    path.join(openclawDir, 'id_rsa'),
-    path.join(openclawDir, 'id_ecdsa'),
-    path.join(openclawDir, 'id_dsa'),
-    path.join(openclawDir, 'id_xmss'),
-    path.join(openclawDir, '.envrc'),
-    path.join(openclawDir, 'api-key.txt'),
-    path.join(openclawDir, 'openclaw.backup.json'),
-    path.join(openclawDir, 'search-index.db-shm'),
-    path.join(browserDir, 'Local State'),
-    path.join(logsDir, 'config-health.json.bak-20260711'),
-    path.join(serviceEnvDir, 'runtime.env'),
-    path.join(agentPrivateDir, 'models-public-looking.txt'),
-    path.join(agentSessionsDir, 'session-public-looking.txt'),
-  ]
-  for (const file of additionalSensitiveFiles) fs.writeFileSync(file, gatewaySecret, { mode: 0o600 })
-  const workspaceSensitiveFiles = [
-    path.join(workspace, 'settings.json.bak.20260711'),
-    path.join(workspace, 'search-index.db-wal'),
-    path.join(workspace, 'id_ed25519'),
-    path.join(workspace, 'private.pem'),
-    path.join(workspace, 'api-key.local'),
-  ]
-  for (const file of workspaceSensitiveFiles) fs.writeFileSync(file, gatewaySecret, { mode: 0o600 })
-  for (const sensitivePath of [configFile, path.join(openclawDir, 'dashboard-local-token'), ...additionalSensitiveFiles, ...workspaceSensitiveFiles]) {
-    const response = await request(frontendPort, '/api/file-manager/read', sameOriginJson({ path: sensitivePath }))
-    assert.equal(response.status, 400)
-    assert.equal(response.body.includes(gatewaySecret), false)
-    assert.equal(response.body.includes(token), false)
-  }
-  const configBefore = fs.readFileSync(configFile, 'utf8')
-  const sensitiveWrite = await request(frontendPort, '/api/file-manager/write', sameOriginJson({
-    path: configFile,
-    content: '{}',
-  }))
-  assert.equal(sensitiveWrite.status, 400)
-  assert.equal(fs.readFileSync(configFile, 'utf8'), configBefore)
+  const ordinaryNamedFile = path.join(workspace, 'credentials.json')
+  fs.writeFileSync(ordinaryNamedFile, '{"mode":"local"}')
+  const ordinaryRead = await request(frontendPort, '/api/file-manager/read', sameOriginJson({ path: ordinaryNamedFile }))
+  assert.equal(ordinaryRead.status, 200)
+  assert.match(ordinaryRead.body, /local/)
+
   const tree = await request(frontendPort, '/api/file-manager/tree')
   assert.equal(tree.status, 200)
   assert.equal(tree.body.includes(gatewaySecret), false)
-  assert.equal(tree.body.includes('OpenClaw 系统数据'), false)
-  assert.equal(tree.body.includes('openclaw.json'), false)
+  assert.match(tree.body, /Agent 工作目录/)
 
-  const representative = workspaceSensitiveFiles[0]
-  const reveal = await request(frontendPort, '/api/file-manager/reveal', sameOriginJson({ path: representative, mode: 'open' }))
-  assert.equal(reveal.status, 400)
-  const backups = await request(frontendPort, `/api/file-manager/backups?path=${encodeURIComponent(representative)}`)
-  assert.notEqual(backups.status, 200)
-  const sensitiveBackupWrite = await request(frontendPort, '/api/file-manager/write', sameOriginJson({ path: representative, content: 'blocked' }))
-  assert.equal(sensitiveBackupWrite.status, 400)
+  const renamed = path.join(workspace, 'managed-renamed.md')
+  const rename = await request(frontendPort, '/api/file-manager/rename', sameOriginJson({ path: untouched, name: path.basename(renamed) }))
+  assert.equal(rename.status, 200)
+  assert.equal(fs.readFileSync(renamed, 'utf8'), '# safe\n')
+  const remove = await request(frontendPort, '/api/file-manager/delete', sameOriginJson({ path: renamed }))
+  assert.equal(remove.status, 200)
+  assert.equal(fs.existsSync(renamed), false)
+
+  assert.notEqual((await request(frontendPort, '/api/file-manager/backups?path=x')).status, 200)
+  assert.notEqual((await request(frontendPort, '/api/file-manager/restore', sameOriginJson({}))).status, 200)
 })
 
 test('上传、头像与 dist 备份接口继续使用受控路径边界', async () => {
@@ -639,21 +561,6 @@ test('上传、头像与 dist 备份接口继续使用受控路径边界', async
   const configuredAvatar = await request(frontendPort, '/api/agent-avatar/test-agent')
   assert.equal(configuredAvatar.status, 200)
   assert.equal(configuredAvatar.headers['content-type'], 'image/png')
-
-  const restoreTarget = path.join(workspace, 'restore.md')
-  const restoreOutside = path.join(outside, 'restore-secret.md')
-  const linkedBackup = `${restoreTarget}.bak.${Date.now()}`
-  fs.writeFileSync(restoreTarget, 'target-unchanged')
-  fs.writeFileSync(restoreOutside, `secret=${gatewaySecret}`)
-  fs.symlinkSync(restoreOutside, linkedBackup)
-
-  const restore = await request(frontendPort, '/api/file-manager/restore', sameOriginJson({
-    backupPath: linkedBackup,
-    targetPath: restoreTarget,
-  }))
-  assert.notEqual(restore.status, 200)
-  assert.equal(fs.readFileSync(restoreTarget, 'utf8'), 'target-unchanged')
-  assert.equal(restore.body.includes(gatewaySecret), false)
 
   const uploadSecret = path.join(outside, 'upload-secret.png')
   fs.writeFileSync(uploadSecret, gatewaySecret)
@@ -769,6 +676,8 @@ test('上传、头像与 dist 备份接口继续使用受控路径边界', async
 
   const nestedLinkBackupId = `v-nested_${Date.now() + 2}`
   const nestedLinkBackup = path.join(backupsRoot, nestedLinkBackupId)
+  const restoreOutside = path.join(outside, 'restore-secret.md')
+  fs.writeFileSync(restoreOutside, `secret=${gatewaySecret}`)
   fs.mkdirSync(nestedLinkBackup)
   fs.symlinkSync(restoreOutside, path.join(nestedLinkBackup, 'index.html'))
   const distBefore = directoryFingerprint(path.join(repo, 'dist'))

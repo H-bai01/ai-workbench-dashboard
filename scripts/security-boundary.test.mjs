@@ -151,10 +151,13 @@ test('第三方 GitHub 代理默认关闭，电费 0 保留且非法值回退', 
   assert.equal(publicElectricityPerHour('not-a-number'), 2)
 })
 
-test('通用文件管理、诊断和自动修复统一标记为暂时停用', () => {
+test('文件管理已恢复，诊断和自动修复继续保持封存', () => {
   for (const path of [
     '/api/file-manager/tree', '/api/file-manager/read', '/api/file-manager/write',
-    '/api/file-manager/reveal', '/api/file-manager/backups', '/api/file-manager/restore',
+    '/api/file-manager/reveal', '/api/file-manager/delete', '/api/file-manager/move',
+  ]) assert.equal(sealedFeatureForPath(path), '', path)
+
+  for (const path of [
     '/api/system/doctor', '/api/system/auto-fix', '/api/system/auto-fix/preview',
   ]) {
     const feature = sealedFeatureForPath(path)
@@ -665,9 +668,9 @@ test('浏览器源码无动态环境读取、密钥或直连后端，Service Wor
   assert.match(source, /\/gateway-api/)
   assert.match(source, /\/gateway-ws/)
   const fileManager = fs.readFileSync(path.join(repo, 'src', 'components', 'FileManagerDialog.vue'), 'utf8')
-  const markdownBlock = fileManager.match(/const renderedMarkdown[\s\S]*?const prettifiedJson/)?.[0] || ''
-  assert.match(markdownBlock, /renderSafeMarkdown/)
-  assert.equal(/catch\s*\{[\s\S]*?return\s+content\.value\.content/.test(markdownBlock), false)
+  assert.equal(/v-html/.test(fileManager), false)
+  assert.match(fileManager, /ElMessageBox\.confirm/)
+  assert.match(fileManager, /file_manager_operation_failed/)
 
   const sw = fs.readFileSync(path.join(repo, 'public', 'sw.js'), 'utf8')
   assert.match(sw, /openclaw-dashboard/)

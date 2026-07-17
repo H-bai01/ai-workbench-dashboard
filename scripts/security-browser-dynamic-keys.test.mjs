@@ -594,7 +594,7 @@ test('真实 Chrome 同时处理三种来源的保留键而不污染原型或重
   assert.equal(result.bodyContainsNaN, false)
 })
 
-test('隔离页面保留项目聚合且状态桶自洽，封存入口给出明确提示', async () => {
+test('隔离页面保留项目聚合且文件管理入口可打开', async () => {
   await page.waitForTimeout(800)
   const bodyText = await page.locator('body').innerText()
   assert.match(bodyText, /OpenClaw/)
@@ -609,8 +609,9 @@ test('隔离页面保留项目聚合且状态桶自洽，封存入口给出明�
   assert.equal(values['总计'], values['运行'] + values['空闲'] + values['已终止'] + values['错误'])
 
   await page.locator('button.action-btn').filter({ hasText: '文件管理' }).click()
-  await page.waitForSelector('.el-message', { state: 'visible' })
-  assert.match(await page.locator('.el-message').last().innerText(), /文件管理暂时停用/)
+  await page.waitForSelector('.file-manager-dialog', { state: 'visible' })
+  assert.match(await page.locator('.file-manager-dialog').innerText(), /管理目录/)
+  await page.locator('.file-manager-dialog .el-dialog__headerbtn').click()
 
   await page.locator('button.top-indicator').filter({ hasText: '网关' }).click()
   await page.waitForTimeout(100)

@@ -6,7 +6,6 @@ const SEALED_EXACT_PATHS = new Map([
 
 export function sealedFeatureForPath(pathname) {
   const path = String(pathname || '')
-  if (path === '/api/file-manager' || path.startsWith('/api/file-manager/')) return '通用文件管理'
   return SEALED_EXACT_PATHS.get(path) || ''
 }
 
