@@ -10,6 +10,10 @@ SHA256SUMS.txt
 SOURCE_PROVENANCE.md
 THIRD_PARTY_NOTICES.md
 TRADEMARKS.md
+docs/images/file-management.png
+docs/images/task-center.png
+docs/images/usage-details.png
+docs/images/workbench-overview.png
 docs/macos-lifecycle.md
 docs/持续集成.md
 eslint.config.js
