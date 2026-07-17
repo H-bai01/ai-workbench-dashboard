@@ -2,7 +2,7 @@
 
 把 OpenClaw、Codex、Claude Code 等本机 AI 工具放进同一个可视化工作台：看运行状态、Token 与 API 等价费用、项目与会话、工具调用、工作目录、定时任务和版本更新。
 
-当前本地正式版本：`v2.10.0`。
+当前本地正式版本：`v2.11.0`。
 
 [![npm version](https://img.shields.io/npm/v/ai-workbench-dashboard.svg)](https://www.npmjs.com/package/ai-workbench-dashboard)
 [![GitHub release](https://img.shields.io/github/v/release/H-bai01/ai-workbench-dashboard)](https://github.com/H-bai01/ai-workbench-dashboard/releases)
@@ -17,6 +17,7 @@
 ### 一个页面掌握所有 AI 工作
 
 - OpenClaw 按 Agent 展示，Codex 与 Claude Code 按项目展示。
+- 监控对象、详情、活动时间线、搜索和任务看板使用统一结构，新 AI 工具可通过适配器继续接入。
 - 统一查看运行、空闲、终止和错误状态。
 - 支持今天、3 天、7 天、30 天、本月、上个月和全部时间范围。
 - 时间范围与底部摘要范围会记住最后一次选择。
