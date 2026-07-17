@@ -291,7 +291,7 @@
                 <el-input
                   v-model="editForm.message"
                   type="textarea"
-                  :rows="10"
+                  :rows="20"
                   placeholder="写给这个 Agent 的具体任务要求..."
                 />
               </el-form-item>
@@ -384,7 +384,7 @@
           <el-input
             v-model="createForm.message"
             type="textarea"
-            :rows="10"
+            :rows="20"
             placeholder="写给这个 Agent 的具体任务要求..."
           />
         </el-form-item>
