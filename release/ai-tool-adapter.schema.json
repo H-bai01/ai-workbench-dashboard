@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/H-bai01/ai-workbench-dashboard/blob/main/release/ai-tool-adapter.schema.json",
+  "title": "AI Workbench Tool Descriptor",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "name", "objectLabel", "capabilities"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "iconSrc": {
+      "type": "string",
+      "minLength": 1
+    },
+    "objectLabel": {
+      "type": "string",
+      "minLength": 1
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "monitor": { "type": "boolean" },
+        "usage": { "type": "boolean" },
+        "details": { "type": "boolean" },
+        "sessions": { "type": "boolean" },
+        "files": { "type": "boolean" },
+        "tasks": { "type": "boolean" },
+        "automation": { "type": "boolean" },
+        "messages": { "type": "boolean" },
+        "skills": { "type": "boolean" },
+        "version": { "type": "boolean" },
+        "nativeUi": { "type": "boolean" },
+        "search": { "type": "boolean" },
+        "timeline": { "type": "boolean" }
+      }
+    }
+  }
+}
