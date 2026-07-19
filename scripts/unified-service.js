@@ -85,6 +85,7 @@ import { createSessionObservationStore } from './session-observation.mjs'
 import { GPT56_BILLING_MODELS, mergeBillingConfigWithDefaults, mergePriceStatus } from './billing-config.mjs'
 import { installPrivacyConsole, installProcessErrorPrivacy } from '../src/utils/log-privacy.mjs'
 import { createOpenClawUpdateStatus } from '../src/utils/openclaw-version.mjs'
+import { collectAccountUsage } from './account-usage.mjs'
 import {
   describeManagedEntry,
   discoverFileManagerRoots,
@@ -7210,6 +7211,27 @@ export const server = http.createServer(async (req, res) => {
       console.error('[local-ai-usage] error:', e.message)
       res.writeHead(e?.statusCode || 500, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: e.message, apps: [], totals: createUsageTotals() }))
+    }
+    return
+  }
+
+  // ============================================
+  // 账号级用量：Codex 跨设备 Token / Claude 跨设备额度
+  // GET /api/account-usage
+  // ============================================
+  if (pathname === '/api/account-usage' && req.method === 'GET') {
+    try {
+      const result = await collectAccountUsage({
+        forceRefresh: url.searchParams.get('refresh') === '1',
+      })
+      sendJson(res, 200, result)
+    } catch {
+      sendJson(res, 200, {
+        ok: true,
+        providers: [],
+        updatedAt: new Date().toISOString(),
+        cached: false,
+      })
     }
     return
   }
