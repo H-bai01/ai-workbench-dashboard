@@ -166,7 +166,7 @@ export async function readCodexAccountUsage({
 
   try {
     await codexRequest(child, pending, 1, 'initialize', {
-      clientInfo: { name: 'ai-workbench-dashboard', version: '2.11.0' },
+      clientInfo: { name: 'ai-workbench-dashboard', version: '2.12.0' },
       capabilities: { experimentalApi: true },
     })
     codexNotification(child, 'initialized')
