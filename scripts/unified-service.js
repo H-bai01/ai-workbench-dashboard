@@ -2694,7 +2694,13 @@ function getBillingDiscountFactor(cfg = {}, timeMs = Date.now()) {
 export function resolveBillingConfig(modelId, billingConfig) {
   const normalized = normalizeModelId(modelId)
   const models = billingConfig?.models || {}
-  if (models[normalized]) return models[normalized]
+  const resolveAlias = (config) => {
+    if (!config?.aliasFor) return config
+    const target = normalizeModelId(config.aliasFor)
+    if (!target || target === normalized) return billingConfig?.fallback
+    return models[target] || billingConfig?.fallback
+  }
+  if (models[normalized]) return resolveAlias(models[normalized])
 
   const lower = normalized.toLowerCase()
   const prefixMatch = Object.keys(models)
@@ -2703,7 +2709,7 @@ export function resolveBillingConfig(modelId, billingConfig) {
       const k = key.toLowerCase()
       return lower === k || lower.startsWith(`${k}-`) || lower.startsWith(`${k}:`)
     })
-  if (prefixMatch) return models[prefixMatch]
+  if (prefixMatch) return resolveAlias(models[prefixMatch])
 
   if (lower.includes('qwen')) {
     return models['qwen3.5'] || models['qwen3.5:9b'] || models['Qwen3.5-4B-OptiQ-4bit'] || billingConfig?.fallback
@@ -6953,8 +6959,8 @@ export const server = http.createServer(async (req, res) => {
         note: 'OpenAI GPT-5.5 Pro 官方 API 标准短上下文 ($30/$180 per M)，汇率 7.2，2026-07 官网核对',
       },
       'codex-auto-review': {
-        mode: 'free',
-        note: 'Codex 自动审查记录：默认只统计 Token，不计入费用；如需计费可改为按 token 计费',
+        aliasFor: 'gpt-5.3-codex',
+        note: 'Codex 自动审查使用 GPT-5.3-Codex 官方 API 等价价格',
       },
       'Qwen3.5-4B-OptiQ-4bit': {
         mode: 'per_token',

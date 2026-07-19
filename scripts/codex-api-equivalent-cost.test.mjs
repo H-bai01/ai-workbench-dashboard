@@ -60,7 +60,13 @@ function configWithGpt56(saved = null) {
     version: 1,
     models: {
       ...GPT56_BILLING_MODELS,
-      'codex-auto-review': { mode: 'free' },
+      'gpt-5.3-codex': {
+        mode: 'per_token',
+        inputPriceCNYPerMillion: 12.6,
+        outputPriceCNYPerMillion: 100.8,
+        cacheReadPriceCNYPerMillion: 1.26,
+      },
+      'codex-auto-review': { aliasFor: 'gpt-5.3-codex' },
     },
     fallback: { mode: 'use_default' },
   }, saved)
@@ -136,7 +142,16 @@ test('旧配置自动补入新模型且不覆盖用户自定义价格', () => {
   assert.equal(billing.fallback.note, '用户自己的回退说明')
 })
 
-test('未知模型明确保持价格未配置，免费模型仍被识别为已配置', () => {
+test('Codex 自动审查按 GPT-5.3-Codex 官方价格计费', () => {
+  const billing = configWithGpt56()
+  const usage = { tokens: 2_000_000, input: 1_000_000, output: 500_000, cacheRead: 500_000, cacheWrite: 0 }
+  const autoReview = resolveBillingConfig('codex-auto-review', billing)
+  const gpt53Codex = resolveBillingConfig('gpt-5.3-codex', billing)
+  assert.deepEqual(autoReview, gpt53Codex)
+  assert.ok(Math.abs(calculateUsageCostWithBilling('codex-auto-review', usage, 0, billing) - 63.63) < 1e-9)
+})
+
+test('未知模型明确保持价格未配置，自动审查模型仍被识别为已配置', () => {
   const billing = configWithGpt56()
   const usage = { tokens: 100, input: 100, output: 0, cacheRead: 0, cacheWrite: 0 }
   assert.equal(observationPriceConfigured('unknown', usage, billing), false)
@@ -276,6 +291,8 @@ test('隔离接口重新读取 Codex 历史日志并返回 API 等价费用状�
   assert.equal(codex.byModel['gpt-5.5'].tokens, 400_000)
   assert.equal(codex.byModel['codex-auto-review'].tokens, 110)
   assert.equal(codex.byModel['codex-auto-review'].output, 10)
+  assert.ok(Math.abs(codex.byModel['codex-auto-review'].cost - 0.002268) < 1e-12)
+  assert.equal(codex.byModel['codex-auto-review'].billingMode, 'per_token')
   assert.equal(codex.byModel.unknown, undefined)
   assert.equal(codex.usage.priceStatus, 'configured')
 })
