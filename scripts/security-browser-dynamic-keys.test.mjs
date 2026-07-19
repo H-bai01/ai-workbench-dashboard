@@ -538,13 +538,16 @@ test('刷新失败保留上一份完整快照并可重试为新的完整结果',
 
 test('统计服务重启断线时保留完整快照且不产生费用统计错误通知', async () => {
   snapshotScenario = 'default'
-  await page.locator('.token-mini-ranges .token-mini-chip').filter({ hasText: /^今天$/ }).click()
+  await page.locator('.token-mini-ranges .token-mini-chip').filter({ hasText: /^3 天$/ }).click()
   await page.locator('.cockpit-inner > .el-loading-mask').waitFor({ state: 'hidden' })
+  await page.locator('.usage-snapshot-refreshing').waitFor({ state: 'hidden' })
   const previousKpi = await page.locator('.token-kpi-row').innerText()
+  assert.match(previousKpi, /当前 Token\s*600/)
 
   snapshotScenario = 'disconnect'
   await page.locator('.token-mini-ranges .token-mini-chip').filter({ hasText: /^7 天$/ }).click()
   await page.locator('.cockpit-inner > .el-loading-mask').waitFor({ state: 'hidden' })
+  await page.locator('.usage-snapshot-refreshing').waitFor({ state: 'hidden' })
   assert.equal(await page.locator('.token-kpi-row').innerText(), previousKpi)
   assert.equal(
     await page.evaluate(() => JSON.parse(localStorage.getItem('ai_workbench_dashboard_notifications_v1') || '[]').length),
