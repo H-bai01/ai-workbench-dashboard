@@ -675,15 +675,21 @@ test('隔离页面保留项目聚合且文件管理入口可打开', async () =>
   assert.equal(values['总计'], values['运行'] + values['空闲'] + values['已终止'] + values['错误'])
 
   await page.locator('button.action-btn').filter({ hasText: '文件管理' }).click()
-  await page.waitForSelector('.file-manager-dialog', { state: 'visible' })
-  const fileManagerText = await page.locator('.file-manager-dialog').innerText()
-  assert.match(fileManagerText, /AI 工作目录/)
-  assert.match(fileManagerText, /我的目录/)
-  assert.match(fileManagerText, /Codex/)
-  assert.match(fileManagerText, /Future AI/)
-  assert.equal(await page.locator('.file-manager-dialog .tool-group').count(), 2)
-  assert.equal(await page.locator('.file-manager-dialog .root-item').filter({ hasText: '共享项目' }).count(), 2)
-  await page.locator('.file-manager-dialog .el-dialog__headerbtn').click()
+  const fileManagerDialog = page.locator('.file-manager-dialog')
+  await fileManagerDialog.waitFor({ state: 'visible' })
+  await fileManagerDialog.locator('.root-list').waitFor({ state: 'visible' })
+  try {
+    const fileManagerText = await fileManagerDialog.innerText()
+    assert.match(fileManagerText, /AI 工作目录/)
+    assert.match(fileManagerText, /我的目录/)
+    assert.match(fileManagerText, /Codex/)
+    assert.match(fileManagerText, /Future AI/)
+    assert.equal(await fileManagerDialog.locator('.tool-group').count(), 2)
+    assert.equal(await fileManagerDialog.locator('.root-item').filter({ hasText: '共享项目' }).count(), 2)
+  } finally {
+    await fileManagerDialog.locator('.el-dialog__headerbtn').click()
+    await fileManagerDialog.waitFor({ state: 'hidden' })
+  }
 
   await page.locator('button.top-indicator').filter({ hasText: '网关' }).click()
   await page.waitForTimeout(100)
