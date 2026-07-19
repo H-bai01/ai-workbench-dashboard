@@ -312,7 +312,12 @@ test('存在无法识别的模型时接口直接报错', async () => {
   try {
     const address = serviceServer.address()
     const localToken = fs.readFileSync(path.join(tempHome, '.openclaw', 'dashboard-local-token'), 'utf8').trim()
-    const today = new Date().toISOString().slice(0, 10)
+    const now = new Date()
+    const today = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+    ].join('-')
     const response = await fetch(`http://127.0.0.1:${address.port}/api/local-ai-usage?start=${today}&end=${today}`, {
       headers: { 'X-Dashboard-Token': localToken },
     })

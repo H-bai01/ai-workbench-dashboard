@@ -51,10 +51,18 @@ function safeRecord(entries = []) {
   return Object.assign(Object.create(null), Object.fromEntries(entries))
 }
 
+function localDateKey(date = new Date()) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-')
+}
+
 function localFixture() {
   const sourceId = `local:codex:${sessionId}`
   const itemUsage = usage(130, 0.13)
-  const day = new Date().toISOString().slice(0, 10)
+  const day = localDateKey()
   return {
     apps: [{
       id: 'codex',
@@ -273,7 +281,7 @@ before(async () => {
         body: JSON.stringify({
           ok: true,
           timeline: [{
-            date: new Date().toISOString().slice(0, 10),
+            date: localDateKey(),
             ...todayUsage,
             byModel: { test: todayUsage },
             byAgentByModel: { main: { test: todayUsage } },

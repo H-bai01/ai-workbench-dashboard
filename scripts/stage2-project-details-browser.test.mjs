@@ -240,7 +240,7 @@ before(async () => {
       body: JSON.stringify({
         ok: true,
         timeline: [{
-          date: new Date().toISOString().slice(0, 10),
+          date: dateKey(today),
           tokens: 0,
           cost: 0,
           input: 0,
