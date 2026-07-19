@@ -75,58 +75,6 @@
       </div>
     </div>
 
-    <div v-if="!projectScope" class="section account-usage-section">
-      <div class="section-title account-usage-title">
-        <el-icon><Monitor /></el-icon>
-        账号级用量
-        <span class="section-hint">包含其他设备上的账号活动</span>
-        <button
-          class="account-usage-refresh"
-          type="button"
-          :disabled="accountUsageLoading"
-          @click="fetchAccountUsage(true)"
-        >{{ accountUsageLoading ? '更新中' : '更新' }}</button>
-      </div>
-      <div class="account-usage-grid" v-loading="accountUsageLoading && !accountUsageReady">
-        <article
-          v-for="provider in accountUsageProviders"
-          :key="provider.id"
-          class="account-usage-card"
-        >
-          <div class="account-usage-card-head">
-            <strong>{{ provider.name }} 账号</strong>
-            <span>{{ provider.exactTokenUsage ? '精确 Token' : '账号额度' }}</span>
-          </div>
-          <template v-if="provider.availability === 'ready'">
-            <div v-if="provider.lifetimeTokens !== null && provider.lifetimeTokens !== undefined" class="account-usage-primary">
-              <span>跨设备累计 Token</span>
-              <strong>{{ formatTokenZh(provider.lifetimeTokens) }}</strong>
-            </div>
-            <div v-if="provider.quotaWindows?.length" class="account-quota-list">
-              <div v-for="window in provider.quotaWindows" :key="window.label" class="account-quota-row">
-                <div>
-                  <span>{{ window.label }}</span>
-                  <strong>{{ formatAccountUsagePercent(window.usedPercent) }}</strong>
-                </div>
-                <div class="account-quota-track">
-                  <span :style="{ width: `${Math.min(100, Math.max(0, window.usedPercent))}%` }"></span>
-                </div>
-                <small v-if="window.resetsAt">重置：{{ formatAccountResetTime(window.resetsAt) }}</small>
-              </div>
-            </div>
-            <p class="account-usage-note">
-              {{ provider.id === 'codex'
-                ? '统计 Codex 账号，不包含普通 ChatGPT 对话。'
-                : 'Claude 当前只提供账号额度比例，不提供精确 Token。' }}
-            </p>
-          </template>
-          <div v-else class="account-usage-unavailable">
-            {{ provider.id === 'codex' ? '未读取到已登录的 Codex 账号用量。' : '未读取到 Claude 账号额度记录。' }}
-          </div>
-        </article>
-      </div>
-    </div>
-
     <div class="section client-breakdown" v-if="timeline.length > 0">
       <div class="section-title client-breakdown-title">
         <el-icon><Monitor /></el-icon>
@@ -703,7 +651,6 @@ watch(visible, (val) => {
   if (val) {
     store.fetchCostSummary()
     fetchTimeline(true)
-    fetchAccountUsage()
   }
 })
 
@@ -739,74 +686,6 @@ const chartLoading = ref(false)
 const timeline = ref<TimelineDay[]>([])
 const timelineUpdatedAt = ref('')
 const timelineErrorNotified = ref(false)
-
-interface AccountQuotaWindow {
-  label: string
-  usedPercent: number
-  resetsAt?: string | null
-}
-interface AccountUsageProvider {
-  id: string
-  name: string
-  availability: 'ready' | 'unavailable' | 'not_installed'
-  exactTokenUsage: boolean
-  accountScope: 'cross_device'
-  lifetimeTokens?: number | null
-  peakDailyTokens?: number | null
-  quotaWindows?: AccountQuotaWindow[]
-  updatedAt?: string
-}
-const accountUsageLoading = ref(false)
-const accountUsageReady = ref(false)
-const accountUsageProviders = ref<AccountUsageProvider[]>([
-  {
-    id: 'codex',
-    name: 'Codex',
-    availability: 'unavailable',
-    exactTokenUsage: true,
-    accountScope: 'cross_device',
-  },
-  {
-    id: 'claude',
-    name: 'Claude',
-    availability: 'unavailable',
-    exactTokenUsage: false,
-    accountScope: 'cross_device',
-  },
-])
-
-function formatAccountUsagePercent(value: number): string {
-  const number = Number(value)
-  if (!Number.isFinite(number)) return '—'
-  return `${Math.round(number * 10) / 10}%`
-}
-
-function formatAccountResetTime(value: string): string {
-  const timestamp = Date.parse(value)
-  if (!Number.isFinite(timestamp)) return '—'
-  return new Date(timestamp).toLocaleString('zh-CN', {
-    month: 'numeric',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-async function fetchAccountUsage(force = false): Promise<void> {
-  if (accountUsageLoading.value) return
-  accountUsageLoading.value = true
-  try {
-    const response = await fetch(`/api/account-usage${force ? '?refresh=1' : ''}`)
-    const data = await response.json().catch(() => ({}))
-    if (!response.ok || !Array.isArray(data.providers)) throw new Error('account_usage_failed')
-    accountUsageProviders.value = data.providers
-    accountUsageReady.value = true
-  } catch {
-    // 保留上一份账号数据；账号统计不阻断本机 Token 明细。
-  } finally {
-    accountUsageLoading.value = false
-  }
-}
 
 // Sprint 8: 图表时间范围选择
 type ChartRangeValue = 'today' | '3d' | '7d' | '30d' | 'month' | 'lastMonth' | 'all' | 'custom'
@@ -2613,115 +2492,6 @@ const filteredAgentModelRows = computed(() => {
 .api-summary-card--cost strong { color: #30d158; }
 .api-summary-card--token strong { color: #0a84ff; }
 
-.account-usage-section {
-  margin-bottom: 14px;
-  padding: 12px 14px 14px;
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  background: rgba(10, 132, 255, 0.035);
-}
-.account-usage-title {
-  margin-bottom: 10px;
-}
-.account-usage-refresh {
-  margin-left: auto;
-  padding: 4px 11px;
-  border: 1px solid rgba(10, 132, 255, 0.4);
-  border-radius: 999px;
-  color: #6cb2ff;
-  background: rgba(10, 132, 255, 0.1);
-  cursor: pointer;
-}
-.account-usage-refresh:disabled {
-  cursor: default;
-  opacity: 0.55;
-}
-.account-usage-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  min-height: 118px;
-}
-.account-usage-card {
-  min-width: 0;
-  padding: 13px 14px;
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  background: var(--fill-subtle);
-}
-.account-usage-card-head,
-.account-usage-primary,
-.account-quota-row > div:first-child {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.account-usage-card-head > strong {
-  color: var(--text-primary);
-  font-size: 14px;
-}
-.account-usage-card-head > span {
-  padding: 2px 8px;
-  border-radius: 999px;
-  color: #6cb2ff;
-  background: rgba(10, 132, 255, 0.12);
-  font-size: 10px;
-}
-.account-usage-primary {
-  margin-top: 13px;
-}
-.account-usage-primary span,
-.account-quota-row span {
-  color: var(--text-secondary);
-  font-size: 11px;
-}
-.account-usage-primary strong {
-  color: #0a84ff;
-  font-size: 20px;
-  font-variant-numeric: tabular-nums;
-}
-.account-quota-list {
-  display: grid;
-  gap: 10px;
-  margin-top: 13px;
-}
-.account-quota-row strong {
-  color: var(--text-primary);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-.account-quota-track {
-  height: 5px;
-  margin-top: 5px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(142, 142, 147, 0.16);
-}
-.account-quota-track span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #0a84ff, #30d158);
-}
-.account-quota-row small {
-  display: block;
-  margin-top: 4px;
-  color: var(--text-muted);
-  font-size: 10px;
-}
-.account-usage-note,
-.account-usage-unavailable {
-  margin: 11px 0 0;
-  color: var(--text-secondary);
-  font-size: 11px;
-  line-height: 1.5;
-}
-.account-usage-unavailable {
-  padding: 24px 0 14px;
-  text-align: center;
-}
-
 .client-breakdown { margin-bottom: 14px; }
 .client-breakdown-title { position: relative; }
 .client-all-btn {
@@ -2822,7 +2592,6 @@ html.light-theme .chart-value-label {
 
 @media (max-width: 800px) {
   .api-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .account-usage-grid { grid-template-columns: 1fr; }
   .client-card-grid { grid-template-columns: 1fr; }
   .model-cost-breakdown { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
