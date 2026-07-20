@@ -35,14 +35,21 @@
 
 ![项目 Token 与费用明细](docs/images/usage-details.png)
 
+模型价格可直接在工作台维护，支持输入、输出、缓存读写价格和分时折扣。
+
+![按模型维护计费规则](docs/images/billing-config.png)
+
 ### 查看项目与执行记录
 
 - 从工作脉冲、贡献排行或监控明细进入同一项目范围。
 - 统一查看用户消息、AI 回复、思考摘要、工具调用、工具结果和 Token 记录。
 - OpenClaw 按 Agent 查看，Codex 与 Claude Code 按项目查看。
 - 当前执行记录为只读功能，不会误发送消息或恢复会话。
+- 活动时间线把不同 AI 工具的会话放在同一条时间轴中，可按工具、时间和会话查看。
 
 ![OpenClaw 执行记录与工具调用](docs/images/execution-records.png)
+
+![全平台 AI 工具活动时间线](docs/images/activity-timeline.png)
 
 ### 管理 AI 工作目录
 
@@ -57,13 +64,30 @@
 ### 管理 Agent、技能与定时任务
 
 - 查看 OpenClaw Agent 详情、对话历史、模型和上下文消耗。
+- 使用快捷发消息面板选择 Agent、常用模板并发送消息。
+- Agent 语音界面可使用当前音色朗读消息，并保留文字会话、上下文和历史 Token 信息。
 - 管理 Agent 技能，按已配置、未安装、Agent 和使用情况分类查看。
 - 查看、新建、编辑、暂停、立即执行和删除 Cron 定时任务。
 - 定时任务可查看执行记录、输出和结果。
 
+![OpenClaw Agent 详情](docs/images/agent-detail.png)
+
+![向 Agent 快捷发消息](docs/images/quick-message.png)
+
+![Agent 语音与文字会话](docs/images/agent-voice.png)
+
 ![AI 工具能力管理](docs/images/tool-capabilities.png)
 
 ![OpenClaw 定时任务中心](docs/images/task-center.png)
+
+### 快速查找与个性化布局
+
+- 全局搜索可定位功能、AI 工具对象、项目、会话和历史消息。
+- 页面模块、顶栏工具、功能按钮和统计卡片均可调整顺序，并自动记住布局。
+
+![全局搜索](docs/images/global-search.png)
+
+![自定义工作台布局](docs/images/custom-layout.png)
 
 ### 通知、更新与回退
 

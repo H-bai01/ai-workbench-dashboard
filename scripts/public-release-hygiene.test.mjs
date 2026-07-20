@@ -11,9 +11,16 @@ const forbiddenPngChunks = new Set(['eXIf', 'tEXt', 'zTXt', 'iTXt', 'tIME'])
 const concreteHome = /(?:\/Users\/(?![<$%{])[^/\s]+\/|\/home\/(?![<$%{])[^/\s]+\/|[A-Z]:\\Users\\(?![<$%{])[^\\\s]+\\)/i
 const localIdentity = /(?:\b[\w.+-]+@[\w.-]+\.local\b|\b[\w.-]*(?:MacBook|Mac-Pro|iMac)[\w.-]*\b)/i
 const reviewedMedia = new Set([
+  'docs/images/activity-timeline.png',
+  'docs/images/agent-detail.png',
+  'docs/images/agent-voice.png',
+  'docs/images/billing-config.png',
+  'docs/images/custom-layout.png',
   'docs/images/execution-records.png',
   'docs/images/file-management.png',
+  'docs/images/global-search.png',
   'docs/images/monitor-objects.png',
+  'docs/images/quick-message.png',
   'docs/images/task-center.png',
   'docs/images/tool-capabilities.png',
   'docs/images/usage-details.png',
