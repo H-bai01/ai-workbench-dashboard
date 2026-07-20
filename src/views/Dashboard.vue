@@ -5131,7 +5131,13 @@ onUnmounted(() => {
 }
 
 .model-share-scroll {
-  flex: 0 0 auto;
+  flex: 0 0 104px;
+  height: 104px;
+}
+
+.model-share-scroll.is-expanded {
+  flex-basis: 248px;
+  height: 248px;
 }
 
 .model-share-scroll :deep(.el-scrollbar__wrap) {
