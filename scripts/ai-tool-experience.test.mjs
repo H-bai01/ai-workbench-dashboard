@@ -37,3 +37,11 @@ test('全局搜索直接消费通用监控对象而不是只认识 Agent', () =>
   assert.match(palette, /AI 工具活动时间线/)
   assert.match(palette, /搜索功能、AI 工具对象、项目、会话和历史消息/)
 })
+
+test('首页概览只有内容超出时才接管滚轮', () => {
+  const dashboard = read('src/views/Dashboard.vue')
+  assert.match(dashboard, /model-share-scroll:not\(\.is-expanded\)[\s\S]*overflow-y:\s*hidden/)
+  assert.match(dashboard, /contribution-scroll:not\(\.is-expanded\)[\s\S]*overflow-y:\s*hidden/)
+  assert.match(dashboard, /'is-scrollable': selectedPulseRows\.length > 8/)
+  assert.match(dashboard, /agent-pulse-grid--two-level\.is-scrollable[\s\S]*overflow-y:\s*auto/)
+})

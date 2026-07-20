@@ -489,7 +489,11 @@
             <button type="button" @click="clearPulseStatusFilter()">查看全部</button>
           </div>
 
-          <div v-if="selectedPulseRows.length > 0" class="agent-pulse-grid agent-pulse-grid--two-level">
+          <div
+            v-if="selectedPulseRows.length > 0"
+            class="agent-pulse-grid agent-pulse-grid--two-level"
+            :class="{ 'is-scrollable': selectedPulseRows.length > 8 }"
+          >
             <button
               v-for="row in selectedPulseRows"
               :key="row.key"
@@ -5144,6 +5148,11 @@ onUnmounted(() => {
   overflow-x: hidden;
 }
 
+.model-share-scroll:not(.is-expanded) :deep(.el-scrollbar__wrap),
+.contribution-scroll:not(.is-expanded) :deep(.el-scrollbar__wrap) {
+  overflow-y: hidden;
+}
+
 .model-share-scroll :deep(.el-scrollbar__bar.is-vertical),
 .contribution-scroll :deep(.el-scrollbar__bar.is-vertical) {
   right: 1px;
@@ -5438,10 +5447,14 @@ onUnmounted(() => {
 .agent-pulse-grid--two-level {
   grid-auto-rows: minmax(62px, max-content);
   max-height: none;
-  overflow-y: auto;
+  overflow-y: hidden;
   padding-right: 4px;
   scrollbar-width: thin;
   scrollbar-color: rgba(152, 152, 157, 0.35) transparent;
+}
+
+.agent-pulse-grid--two-level.is-scrollable {
+  overflow-y: auto;
 }
 
 .agent-pulse-grid--two-level::-webkit-scrollbar {
