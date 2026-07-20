@@ -190,6 +190,7 @@
       </div>
       <div
         class="cockpit-inner"
+        :class="{ 'has-expanded-summary': modelShareExpanded || contributionExpanded }"
         v-loading="tokenUsageSnapshotBlocking"
         element-loading-text="正在汇总完整统计…"
       >
@@ -386,49 +387,57 @@
               class="token-mini-chart-empty"
             >暂无趋势数据</div>
           </div>
-          <div
+          <el-scrollbar
             v-if="modelShareRows.length > 0"
-            class="model-share-list"
+            class="model-share-scroll"
             :class="{
-              'model-share-list--both': tokenMiniMetric === 'both',
               'is-expanded': modelShareExpanded,
             }"
+            :height="modelShareExpanded ? 248 : 104"
+            :always="modelShareExpanded && modelShareHasOverflow"
           >
-            <button
-              v-for="row in visibleModelShareRows"
-              :key="row.model"
-              class="model-share-row"
+            <div
+              class="model-share-list"
               :class="{
-                active: isTokenMiniModelActive(row.model),
-                muted: hasTokenMiniModelFilter && !isTokenMiniModelActive(row.model),
-                'model-share-row--both': tokenMiniMetric === 'both',
+                'model-share-list--both': tokenMiniMetric === 'both',
               }"
-              type="button"
-              :title="`${row.label} · 点击筛选 / 取消筛选`"
-              @click.stop="toggleTokenMiniModel(row.model)"
             >
-              <span
-                class="model-brand-mark"
-                :class="`model-brand-mark--${getModelLogoKey(row.model)}`"
-                :title="getModelCompanyName(row.model)"
+              <button
+                v-for="row in visibleModelShareRows"
+                :key="row.model"
+                class="model-share-row"
+                :class="{
+                  active: isTokenMiniModelActive(row.model),
+                  muted: hasTokenMiniModelFilter && !isTokenMiniModelActive(row.model),
+                  'model-share-row--both': tokenMiniMetric === 'both',
+                }"
+                type="button"
+                :title="`${row.label} · 点击筛选 / 取消筛选`"
+                @click.stop="toggleTokenMiniModel(row.model)"
               >
-                <img
-                  v-if="getModelLogoSrc(row.model)"
-                  class="model-brand-img"
-                  :src="getModelLogoSrc(row.model)"
-                  :alt="getModelCompanyName(row.model)"
-                />
-                <span v-else>{{ getModelLogoText(row.model) }}</span>
-              </span>
-              <span class="model-share-name" :title="row.label">{{ row.label }}</span>
-              <span v-if="tokenMiniMetric === 'both'" class="metric-pair model-share-token">
-                <span :style="{ color: TOKEN_METRIC_COLOR }">{{ row.tokenText }}</span>
-                <span :style="{ color: COST_METRIC_COLOR }">{{ row.costText }}</span>
-              </span>
-              <span v-else class="model-share-token" :style="{ color: tokenMiniCurrentMetricColor }">{{ row.metricText }}</span>
-              <span class="model-share-pct">{{ row.pct }}%</span>
-            </button>
-          </div>
+                <span
+                  class="model-brand-mark"
+                  :class="`model-brand-mark--${getModelLogoKey(row.model)}`"
+                  :title="getModelCompanyName(row.model)"
+                >
+                  <img
+                    v-if="getModelLogoSrc(row.model)"
+                    class="model-brand-img"
+                    :src="getModelLogoSrc(row.model)"
+                    :alt="getModelCompanyName(row.model)"
+                  />
+                  <span v-else>{{ getModelLogoText(row.model) }}</span>
+                </span>
+                <span class="model-share-name" :title="row.label">{{ row.label }}</span>
+                <span v-if="tokenMiniMetric === 'both'" class="metric-pair model-share-token">
+                  <span :style="{ color: TOKEN_METRIC_COLOR }">{{ row.tokenText }}</span>
+                  <span :style="{ color: COST_METRIC_COLOR }">{{ row.costText }}</span>
+                </span>
+                <span v-else class="model-share-token" :style="{ color: tokenMiniCurrentMetricColor }">{{ row.metricText }}</span>
+                <span class="model-share-pct">{{ row.pct }}%</span>
+              </button>
+            </div>
+          </el-scrollbar>
           <button
             v-if="modelShareHiddenCount > 0 || modelShareExpanded"
             class="cockpit-disclosure"
@@ -436,7 +445,11 @@
             :aria-expanded="modelShareExpanded"
             @click.stop="modelShareExpanded = !modelShareExpanded"
           >
-            {{ modelShareExpanded ? '收起模型' : `展开其余 ${modelShareHiddenCount} 个模型` }}
+            {{
+              modelShareExpanded
+                ? `已展开 ${modelShareExpandedVisibleCount} / ${modelShareRows.length} 个模型 · 收起`
+                : `展开其余 ${modelShareHiddenCount} 个模型`
+            }}
           </button>
         </article>
 
@@ -522,54 +535,59 @@
             </div>
             <button class="cockpit-link-btn" @click="openTokenDetail()">看明细</button>
           </div>
-          <div
+          <el-scrollbar
             v-if="contributionRows.length > 0"
-            class="contribution-list"
-            :class="{ 'is-expanded': contributionExpanded }"
+            class="contribution-scroll"
+            :class="{
+              'is-expanded': contributionExpanded,
+            }"
+            :always="contributionExpanded && contributionHasOverflow"
           >
-            <div
-              v-for="(row, index) in visibleContributionRows"
-              :key="row.key"
-              class="contribution-row"
-              :class="{ 'is-local-source': row.kind !== 'openclaw' }"
-              data-project-entry="contribution"
-              :data-project-name="row.projectScope?.projectName"
-              @click="onContributionRowClick(row)"
-            >
-              <div class="contribution-person" :title="`第 ${index + 1} 名`">
-                <img
-                  class="contribution-avatar"
-                  :class="{ 'is-claude-code': row.kind === 'claude-code' }"
-                  :src="row.avatarSrc"
-                  :alt="row.name"
-                  @error="setDefaultAvatar"
-                />
-              </div>
-              <div class="contribution-body">
-                <div class="contribution-line">
-                  <div class="contribution-title-wrap">
-                    <span class="contribution-name" :title="row.project || row.name">{{ row.name }}</span>
-                  </div>
-                  <strong v-if="tokenMiniMetric === 'both'" class="metric-pair contribution-value">
-                    <span :style="{ color: TOKEN_METRIC_COLOR }">{{ row.tokenText }}</span>
-                    <span :style="{ color: COST_METRIC_COLOR }">{{ row.costText }}</span>
-                  </strong>
-                  <strong v-else class="contribution-value" :style="{ color: tokenMiniCurrentMetricColor }">{{ row.metricText }}</strong>
+            <div class="contribution-list">
+              <div
+                v-for="(row, index) in visibleContributionRows"
+                :key="row.key"
+                class="contribution-row"
+                :class="{ 'is-local-source': row.kind !== 'openclaw' }"
+                data-project-entry="contribution"
+                :data-project-name="row.projectScope?.projectName"
+                @click="onContributionRowClick(row)"
+              >
+                <div class="contribution-person" :title="`第 ${index + 1} 名`">
+                  <img
+                    class="contribution-avatar"
+                    :class="{ 'is-claude-code': row.kind === 'claude-code' }"
+                    :src="row.avatarSrc"
+                    :alt="row.name"
+                    @error="setDefaultAvatar"
+                  />
                 </div>
-                <template v-if="tokenMiniMetric === 'both'">
-                  <div class="contribution-bar">
-                    <span :style="{ width: barW(row.usage.tokens, contributionMaxTokens), backgroundColor: TOKEN_METRIC_COLOR }"></span>
+                <div class="contribution-body">
+                  <div class="contribution-line">
+                    <div class="contribution-title-wrap">
+                      <span class="contribution-name" :title="row.project || row.name">{{ row.name }}</span>
+                    </div>
+                    <strong v-if="tokenMiniMetric === 'both'" class="metric-pair contribution-value">
+                      <span :style="{ color: TOKEN_METRIC_COLOR }">{{ row.tokenText }}</span>
+                      <span :style="{ color: COST_METRIC_COLOR }">{{ row.costText }}</span>
+                    </strong>
+                    <strong v-else class="contribution-value" :style="{ color: tokenMiniCurrentMetricColor }">{{ row.metricText }}</strong>
                   </div>
-                  <div class="contribution-bar contribution-bar--cost">
-                    <span :style="{ width: barW(row.usage.cost, contributionMaxCost), backgroundColor: COST_METRIC_COLOR }"></span>
+                  <template v-if="tokenMiniMetric === 'both'">
+                    <div class="contribution-bar">
+                      <span :style="{ width: barW(row.usage.tokens, contributionMaxTokens), backgroundColor: TOKEN_METRIC_COLOR }"></span>
+                    </div>
+                    <div class="contribution-bar contribution-bar--cost">
+                      <span :style="{ width: barW(row.usage.cost, contributionMaxCost), backgroundColor: COST_METRIC_COLOR }"></span>
+                    </div>
+                  </template>
+                  <div v-else class="contribution-bar">
+                    <span :style="{ width: contributionWidth(row.usageValue), backgroundColor: contributionBarColor }"></span>
                   </div>
-                </template>
-                <div v-else class="contribution-bar">
-                  <span :style="{ width: contributionWidth(row.usageValue), backgroundColor: contributionBarColor }"></span>
                 </div>
               </div>
             </div>
-          </div>
+          </el-scrollbar>
           <button
             v-if="contributionHiddenCount > 0 || contributionExpanded"
             class="cockpit-disclosure"
@@ -577,7 +595,11 @@
             :aria-expanded="contributionExpanded"
             @click="contributionExpanded = !contributionExpanded"
           >
-            {{ contributionExpanded ? '收起排行' : `展开其余 ${contributionHiddenCount} 项` }}
+            {{
+              contributionExpanded
+                ? `已展开 ${contributionExpandedVisibleCount} / ${contributionRows.length} 项 · 收起`
+                : `展开其余 ${contributionHiddenCount} 项`
+            }}
           </button>
           <div v-if="contributionRows.length === 0" class="contribution-empty">{{ contributionEmptyText }}</div>
         </article>
@@ -3547,6 +3569,7 @@ const contributionRows = computed(() => {
 })
 
 const CONTRIBUTION_COLLAPSED_COUNT = 6
+const CONTRIBUTION_EXPANDED_VISIBLE_COUNT = CONTRIBUTION_COLLAPSED_COUNT + 4
 const contributionExpanded = ref(false)
 const visibleContributionRows = computed(() => (
   contributionExpanded.value
@@ -3556,6 +3579,13 @@ const visibleContributionRows = computed(() => (
 const contributionHiddenCount = computed(() => Math.max(
   0,
   contributionRows.value.length - (contributionExpanded.value ? contributionRows.value.length : CONTRIBUTION_COLLAPSED_COUNT),
+))
+const contributionExpandedVisibleCount = computed(() => Math.min(
+  contributionRows.value.length,
+  CONTRIBUTION_EXPANDED_VISIBLE_COUNT,
+))
+const contributionHasOverflow = computed(() => (
+  contributionRows.value.length > CONTRIBUTION_EXPANDED_VISIBLE_COUNT
 ))
 
 function contributionWidth(value: number): string {
@@ -3589,6 +3619,7 @@ const modelShareRows = computed(() => {
 })
 
 const MODEL_SHARE_COLLAPSED_COUNT = 3
+const MODEL_SHARE_EXPANDED_VISIBLE_COUNT = MODEL_SHARE_COLLAPSED_COUNT + 4
 const modelShareExpanded = ref(false)
 const visibleModelShareRows = computed(() => (
   modelShareExpanded.value
@@ -3598,6 +3629,13 @@ const visibleModelShareRows = computed(() => (
 const modelShareHiddenCount = computed(() => Math.max(
   0,
   modelShareRows.value.length - (modelShareExpanded.value ? modelShareRows.value.length : MODEL_SHARE_COLLAPSED_COUNT),
+))
+const modelShareExpandedVisibleCount = computed(() => Math.min(
+  modelShareRows.value.length,
+  MODEL_SHARE_EXPANDED_VISIBLE_COUNT,
+))
+const modelShareHasOverflow = computed(() => (
+  modelShareRows.value.length > MODEL_SHARE_EXPANDED_VISIBLE_COUNT
 ))
 
 // REC-011: 加载超时提示（加载超过 10s 时显示）
@@ -4779,6 +4817,14 @@ onUnmounted(() => {
     0 18px 46px rgba(0, 0, 0, 0.22);
 }
 
+@media (min-width: 1281px) {
+  .cockpit-inner.has-expanded-summary .cockpit-card {
+    height: calc(clamp(390px, 20vw, 420px) + 144px);
+    min-height: 534px;
+    max-height: 564px;
+  }
+}
+
 .contribution-card {
   min-height: 390px;
 }
@@ -5084,24 +5130,33 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
+.model-share-scroll {
+  flex: 0 0 auto;
+}
+
+.model-share-scroll :deep(.el-scrollbar__wrap) {
+  overflow-x: hidden;
+}
+
+.model-share-scroll :deep(.el-scrollbar__bar.is-vertical),
+.contribution-scroll :deep(.el-scrollbar__bar.is-vertical) {
+  right: 1px;
+  width: 8px;
+  opacity: 1;
+}
+
+.model-share-scroll :deep(.el-scrollbar__thumb),
+.contribution-scroll :deep(.el-scrollbar__thumb) {
+  background: rgba(152, 152, 157, 0.62);
+  opacity: 1;
+}
+
 .model-share-list {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  flex: 0 0 auto;
-  max-height: 104px;
-  overflow: hidden;
-  padding-right: 4px;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(152,152,157,0.4) transparent;
+  padding-right: 12px;
 }
-
-.model-share-list.is-expanded {
-  overflow-y: auto;
-}
-
-.model-share-list::-webkit-scrollbar { width: 5px; }
-.model-share-list::-webkit-scrollbar-thumb { background: rgba(152,152,157,0.4); border-radius: 3px; }
 
 .model-share-list--scrollable {
   max-height: none;
@@ -5554,31 +5609,25 @@ onUnmounted(() => {
   background: rgba(10, 132, 255, 0.09);
 }
 
+.contribution-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+.contribution-scroll:not(.is-expanded) {
+  flex: 0 0 246px;
+  height: 246px;
+}
+
+.contribution-scroll :deep(.el-scrollbar__wrap) {
+  overflow-x: hidden;
+}
+
 .contribution-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  flex: 1;
-  min-height: 0;
-  max-height: none;
-  overflow-y: auto;
-  padding-right: 4px;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(152, 152, 157, 0.38) transparent;
-}
-
-.contribution-list:not(.is-expanded) {
-  flex: 0 0 auto;
-  overflow: hidden;
-}
-
-.contribution-list::-webkit-scrollbar {
-  width: 6px;
-}
-
-.contribution-list::-webkit-scrollbar-thumb {
-  background: rgba(152, 152, 157, 0.32);
-  border-radius: 999px;
+  padding-right: 12px;
 }
 
 .contribution-row {
