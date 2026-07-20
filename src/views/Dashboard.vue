@@ -451,6 +451,7 @@
                 : `展开其余 ${modelShareHiddenCount} 个模型`
             }}
           </button>
+          <span v-else class="cockpit-disclosure-spacer" aria-hidden="true"></span>
         </article>
 
         <article class="cockpit-card agent-pulse-card" ref="agentPulseCardEl">
@@ -4803,9 +4804,9 @@ onUnmounted(() => {
   border-radius: 8px;
   padding: 16px;
   min-width: 0;
-  height: clamp(470px, 24vw, 500px);
-  min-height: 470px;
-  max-height: 500px;
+  height: calc(clamp(470px, 24vw, 500px) + 29px);
+  min-height: 499px;
+  max-height: 529px;
   display: flex;
   flex-direction: column;
   backdrop-filter: var(--glass-blur);
@@ -4825,7 +4826,7 @@ onUnmounted(() => {
 }
 
 .contribution-card {
-  min-height: 470px;
+  min-height: 499px;
 }
 
 .token-cockpit-card {
@@ -5612,6 +5613,14 @@ onUnmounted(() => {
 .cockpit-disclosure:hover {
   color: #b3d7ff;
   background: rgba(10, 132, 255, 0.09);
+}
+
+.cockpit-disclosure-spacer {
+  display: block;
+  align-self: center;
+  flex: 0 0 24px;
+  min-height: 24px;
+  margin-top: 5px;
 }
 
 .contribution-scroll {
