@@ -443,7 +443,7 @@
             class="cockpit-disclosure"
             type="button"
             :aria-expanded="modelShareExpanded"
-            @click.stop="modelShareExpanded = !modelShareExpanded"
+            @click.stop="setOverviewListsExpanded(!modelShareExpanded)"
           >
             {{
               modelShareExpanded
@@ -593,7 +593,7 @@
             class="cockpit-disclosure"
             type="button"
             :aria-expanded="contributionExpanded"
-            @click="contributionExpanded = !contributionExpanded"
+            @click="setOverviewListsExpanded(!contributionExpanded)"
           >
             {{
               contributionExpanded
@@ -3638,6 +3638,11 @@ const modelShareHasOverflow = computed(() => (
   modelShareRows.value.length > MODEL_SHARE_EXPANDED_VISIBLE_COUNT
 ))
 
+function setOverviewListsExpanded(expanded: boolean): void {
+  modelShareExpanded.value = expanded
+  contributionExpanded.value = expanded
+}
+
 // REC-011: 加载超时提示（加载超过 10s 时显示）
 const loadingHintVisible = ref(false)
 let loadingHintTimer: ReturnType<typeof setTimeout> | null = null
@@ -4819,9 +4824,9 @@ onUnmounted(() => {
 
 @media (min-width: 1281px) {
   .cockpit-inner.has-expanded-summary .cockpit-card {
-    height: calc(clamp(390px, 20vw, 420px) + 144px);
-    min-height: 534px;
-    max-height: 564px;
+    height: calc(clamp(390px, 20vw, 420px) + 264px);
+    min-height: 654px;
+    max-height: 684px;
   }
 }
 
