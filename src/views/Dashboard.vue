@@ -3867,6 +3867,8 @@ onUnmounted(() => {
 <style scoped>
 /* ==================== LAYOUT ==================== */
 .dashboard {
+  --dashboard-inline-gutter: clamp(14px, 1.5vw, 40px);
+  --dashboard-layout-gap: clamp(12px, 1vw, 24px);
   min-height: 100vh;
   background: var(--bg-primary);
   color: var(--text-primary);
@@ -3889,9 +3891,10 @@ onUnmounted(() => {
 }
 
 .status-bar-inner {
-  max-width: 1440px;
+  width: 100%;
+  max-width: none;
   margin: 0 auto;
-  padding: 10px 24px;
+  padding: 10px var(--dashboard-inline-gutter);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -4136,11 +4139,12 @@ onUnmounted(() => {
 /* ─── 通用可排序模块（时间线 / 版本说明）──────────────────────────────────── */
 .module-card-section {
   background: var(--bg-primary);
-  padding: 12px 24px 18px;
+  padding: 12px var(--dashboard-inline-gutter) 18px;
 }
 
 .module-card-shell {
-  max-width: 1440px;
+  width: 100%;
+  max-width: none;
   margin: 0 auto;
   border: 1px solid var(--border-color);
   border-radius: 12px;
@@ -4238,11 +4242,12 @@ onUnmounted(() => {
 
 .control-dock-section {
   background: var(--bg-primary);
-  padding: 12px 24px 18px;
+  padding: 12px var(--dashboard-inline-gutter) 18px;
 }
 
 .control-dock-inner {
-  max-width: 1440px;
+  width: 100%;
+  max-width: none;
   margin: 0 auto;
   padding: 14px;
   border: 1px solid rgba(235, 235, 245, 0.14);
@@ -4535,11 +4540,12 @@ onUnmounted(() => {
 /* ==================== COCKPIT SECTION ==================== */
 .cockpit-section {
   background: var(--bg-primary);
-  padding: 20px 24px 10px;
+  padding: 20px var(--dashboard-inline-gutter) 10px;
 }
 
 .scope-toolbar {
-  max-width: 1440px;
+  width: 100%;
+  max-width: none;
   margin: 0 auto 14px;
   display: flex;
   align-items: center;
@@ -4691,11 +4697,15 @@ onUnmounted(() => {
 }
 
 .cockpit-inner {
-  max-width: 1440px;
+  width: 100%;
+  max-width: none;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.14fr) minmax(320px, 0.88fr);
-  gap: 16px;
+  grid-template-columns:
+    minmax(360px, 1fr)
+    520px
+    clamp(420px, calc(420px + (100vw - 1440px) * 0.08), 520px);
+  gap: var(--dashboard-layout-gap);
   align-items: stretch;
 }
 
@@ -4707,8 +4717,8 @@ onUnmounted(() => {
   border-radius: 8px;
   padding: 16px;
   min-width: 0;
-  height: 400px;
-  min-height: 356px;
+  height: auto;
+  min-height: clamp(400px, 24vw, 540px);
   display: flex;
   flex-direction: column;
   backdrop-filter: var(--glass-blur);
@@ -5186,6 +5196,10 @@ onUnmounted(() => {
   flex: 0 0 auto;
 }
 
+.agent-pulse-card {
+  container-type: inline-size;
+}
+
 .agent-pulse-app-tab {
   min-width: 0;
   min-height: 66px;
@@ -5312,7 +5326,7 @@ onUnmounted(() => {
 
 .agent-pulse-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-auto-rows: minmax(62px, max-content);
   gap: 10px;
   flex: 1;
@@ -5323,7 +5337,7 @@ onUnmounted(() => {
 
 .agent-pulse-grid--two-level {
   grid-auto-rows: minmax(62px, max-content);
-  max-height: 300px;
+  max-height: none;
   overflow-y: auto;
   padding-right: 4px;
   scrollbar-width: thin;
@@ -5362,6 +5376,7 @@ onUnmounted(() => {
 
 .agent-pulse-item:only-child {
   grid-column: 1 / -1;
+  min-height: clamp(92px, 16cqi, 148px);
 }
 
 .agent-pulse-item.is-local-source {
@@ -5483,7 +5498,7 @@ onUnmounted(() => {
   gap: 6px;
   flex: 1;
   min-height: 0;
-  max-height: 300px;
+  max-height: none;
   overflow-y: auto;
   padding-right: 4px;
   scrollbar-width: thin;
@@ -6138,9 +6153,10 @@ onUnmounted(() => {
 
 /* ==================== WORKFLOW STEPS / DIVIDER ==================== */
 .workflow-section {
-  max-width: 1440px;
+  width: 100%;
+  max-width: none;
   margin: 0 auto;
-  padding: 8px 24px;
+  padding: 8px var(--dashboard-inline-gutter);
 }
 
 /* REC-029: workflow-steps-wrapper 已移除，padding 合并到 workflow-section */
@@ -6356,11 +6372,12 @@ onUnmounted(() => {
 /* ==================== TASK BOARD ==================== */
 .task-board-section {
   background: var(--bg-primary);
-  padding: 12px 24px 18px;
+  padding: 12px var(--dashboard-inline-gutter) 18px;
 }
 
 .task-board-shell {
-  max-width: 1440px;
+  width: 100%;
+  max-width: none;
   margin: 0 auto;
   border: 1px solid var(--border-color);
   border-radius: 12px;
@@ -6435,7 +6452,8 @@ onUnmounted(() => {
 
 /* ==================== BOARD LAYOUT ==================== */
 .board-container {
-  max-width: 1440px;
+  width: 100%;
+  max-width: none;
   margin: 0 auto;
   padding: 0 16px 16px;
   display: flex;
@@ -6509,6 +6527,16 @@ onUnmounted(() => {
 }
 
 /* ==================== RESPONSIVE ==================== */
+@media (min-width: 1680px) {
+  .cockpit-card {
+    padding: clamp(16px, 1vw, 24px);
+  }
+
+  .board-column {
+    max-width: none;
+  }
+}
+
 @media (max-width: 1280px) {
   .scope-toolbar {
     align-items: flex-start;
@@ -6529,6 +6557,7 @@ onUnmounted(() => {
 
   .cockpit-card {
     height: auto;
+    min-height: 356px;
   }
 
   .control-dock-inner {
