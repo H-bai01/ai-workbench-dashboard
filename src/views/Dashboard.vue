@@ -389,10 +389,13 @@
           <div
             v-if="modelShareRows.length > 0"
             class="model-share-list"
-            :class="{ 'model-share-list--both': tokenMiniMetric === 'both' }"
+            :class="{
+              'model-share-list--both': tokenMiniMetric === 'both',
+              'is-expanded': modelShareExpanded,
+            }"
           >
             <button
-              v-for="row in modelShareRows"
+              v-for="row in visibleModelShareRows"
               :key="row.model"
               class="model-share-row"
               :class="{
@@ -426,6 +429,15 @@
               <span class="model-share-pct">{{ row.pct }}%</span>
             </button>
           </div>
+          <button
+            v-if="modelShareHiddenCount > 0 || modelShareExpanded"
+            class="cockpit-disclosure"
+            type="button"
+            :aria-expanded="modelShareExpanded"
+            @click.stop="modelShareExpanded = !modelShareExpanded"
+          >
+            {{ modelShareExpanded ? '收起模型' : `展开其余 ${modelShareHiddenCount} 个模型` }}
+          </button>
         </article>
 
         <article class="cockpit-card agent-pulse-card" ref="agentPulseCardEl">
@@ -510,9 +522,13 @@
             </div>
             <button class="cockpit-link-btn" @click="openTokenDetail()">看明细</button>
           </div>
-          <div v-if="contributionRows.length > 0" class="contribution-list">
+          <div
+            v-if="contributionRows.length > 0"
+            class="contribution-list"
+            :class="{ 'is-expanded': contributionExpanded }"
+          >
             <div
-              v-for="(row, index) in contributionRows"
+              v-for="(row, index) in visibleContributionRows"
               :key="row.key"
               class="contribution-row"
               :class="{ 'is-local-source': row.kind !== 'openclaw' }"
@@ -554,7 +570,16 @@
               </div>
             </div>
           </div>
-          <div v-else class="contribution-empty">{{ contributionEmptyText }}</div>
+          <button
+            v-if="contributionHiddenCount > 0 || contributionExpanded"
+            class="cockpit-disclosure"
+            type="button"
+            :aria-expanded="contributionExpanded"
+            @click="contributionExpanded = !contributionExpanded"
+          >
+            {{ contributionExpanded ? '收起排行' : `展开其余 ${contributionHiddenCount} 项` }}
+          </button>
+          <div v-if="contributionRows.length === 0" class="contribution-empty">{{ contributionEmptyText }}</div>
         </article>
       </div>
     </section>
@@ -3521,6 +3546,18 @@ const contributionRows = computed(() => {
     .sort((a, b) => b.usageValue - a.usageValue || a.name.localeCompare(b.name, 'zh-CN'))
 })
 
+const CONTRIBUTION_COLLAPSED_COUNT = 6
+const contributionExpanded = ref(false)
+const visibleContributionRows = computed(() => (
+  contributionExpanded.value
+    ? contributionRows.value
+    : contributionRows.value.slice(0, CONTRIBUTION_COLLAPSED_COUNT)
+))
+const contributionHiddenCount = computed(() => Math.max(
+  0,
+  contributionRows.value.length - (contributionExpanded.value ? contributionRows.value.length : CONTRIBUTION_COLLAPSED_COUNT),
+))
+
 function contributionWidth(value: number): string {
   const max = contributionRows.value[0]?.usageValue || 1
   if (value <= 0) return '0%'
@@ -3550,6 +3587,18 @@ const modelShareRows = computed(() => {
       color: getModelColor(model, index),
     }))
 })
+
+const MODEL_SHARE_COLLAPSED_COUNT = 3
+const modelShareExpanded = ref(false)
+const visibleModelShareRows = computed(() => (
+  modelShareExpanded.value
+    ? modelShareRows.value
+    : modelShareRows.value.slice(0, MODEL_SHARE_COLLAPSED_COUNT)
+))
+const modelShareHiddenCount = computed(() => Math.max(
+  0,
+  modelShareRows.value.length - (modelShareExpanded.value ? modelShareRows.value.length : MODEL_SHARE_COLLAPSED_COUNT),
+))
 
 // REC-011: 加载超时提示（加载超过 10s 时显示）
 const loadingHintVisible = ref(false)
@@ -4717,8 +4766,9 @@ onUnmounted(() => {
   border-radius: 8px;
   padding: 16px;
   min-width: 0;
-  height: auto;
-  min-height: clamp(400px, 24vw, 540px);
+  height: clamp(390px, 20vw, 420px);
+  min-height: 390px;
+  max-height: 420px;
   display: flex;
   flex-direction: column;
   backdrop-filter: var(--glass-blur);
@@ -4730,7 +4780,7 @@ onUnmounted(() => {
 }
 
 .contribution-card {
-  min-height: 356px;
+  min-height: 390px;
 }
 
 .token-cockpit-card {
@@ -4883,21 +4933,6 @@ onUnmounted(() => {
   -webkit-backdrop-filter: blur(14px) saturate(1.22);
 }
 
-.token-cockpit-card--few-models .token-mini-chart {
-  min-height: 130px;
-}
-
-.token-cockpit-card--few-models
-.token-cockpit-card--three-models .token-mini-chart {
-  min-height: 130px;
-}
-
-.token-cockpit-card--three-models
-.token-cockpit-card--many-models .token-mini-chart {
-  min-height: 130px;
-}
-
-.token-cockpit-card--many-models
 .token-mini-chart-head {
   display: flex;
   align-items: center;
@@ -5054,11 +5089,15 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 4px;
   flex: 0 0 auto;
-  max-height: 104px;        /* 恰好3行(32×3+gap×2),第4个完全收起走滚动,不露头 */
-  overflow-y: auto;
+  max-height: 104px;
+  overflow: hidden;
   padding-right: 4px;
   scrollbar-width: thin;
   scrollbar-color: rgba(152,152,157,0.4) transparent;
+}
+
+.model-share-list.is-expanded {
+  overflow-y: auto;
 }
 
 .model-share-list::-webkit-scrollbar { width: 5px; }
@@ -5492,6 +5531,29 @@ onUnmounted(() => {
   background: rgba(10, 132, 255, 0.15);
 }
 
+.cockpit-disclosure {
+  align-self: center;
+  flex: 0 0 auto;
+  min-height: 24px;
+  margin-top: 5px;
+  padding: 2px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #6cb2ff;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 20px;
+  cursor: pointer;
+  transition: color 0.18s ease, background 0.18s ease;
+}
+
+.cockpit-disclosure:hover {
+  color: #b3d7ff;
+  background: rgba(10, 132, 255, 0.09);
+}
+
 .contribution-list {
   display: flex;
   flex-direction: column;
@@ -5503,6 +5565,11 @@ onUnmounted(() => {
   padding-right: 4px;
   scrollbar-width: thin;
   scrollbar-color: rgba(152, 152, 157, 0.38) transparent;
+}
+
+.contribution-list:not(.is-expanded) {
+  flex: 0 0 auto;
+  overflow: hidden;
 }
 
 .contribution-list::-webkit-scrollbar {
@@ -6558,6 +6625,7 @@ onUnmounted(() => {
   .cockpit-card {
     height: auto;
     min-height: 356px;
+    max-height: none;
   }
 
   .control-dock-inner {
