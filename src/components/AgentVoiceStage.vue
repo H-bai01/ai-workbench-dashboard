@@ -1119,9 +1119,9 @@ onUnmounted(() => {
   top: 0;
   left: 0;
   bottom: 0;
-  width: clamp(340px, 22vw, 420px);
-  max-width: 420px;
-  min-width: 340px;
+  width: clamp(480px, 34vw, 720px);
+  max-width: 720px;
+  min-width: 480px;
   pointer-events: auto;
   display: flex;
   align-items: stretch;
@@ -1160,9 +1160,11 @@ onUnmounted(() => {
   --voice-dot-active: #30d158;
   --voice-dot-thinking: #ffcc00;
   --voice-dot-error: #ff453a;
-  --voice-agent-y: 63%;
-  --voice-wave-gap: 54px;
-  --voice-control-gap: 112px;
+  --voice-orb-size: clamp(280px, min(24vw, 32vh), 520px);
+  --voice-orb-top: max(72px, calc(50% - ((var(--voice-orb-size) + 210px) / 2)));
+  --voice-agent-y: calc(var(--voice-orb-top) + var(--voice-orb-size) + 18px);
+  --voice-wave-gap: 36px;
+  --voice-control-gap: 72px;
   --voice-speaking-shadow-a: 0 0 28px rgba(73, 186, 255, 0.24);
   --voice-speaking-shadow-b: 0 0 48px rgba(143, 186, 255, 0.26);
 }
@@ -1298,10 +1300,10 @@ onUnmounted(() => {
 .voice-canvas {
   position: absolute;
   z-index: 2;
-  top: clamp(140px, 18vh, 200px);
+  top: var(--voice-orb-top);
   left: 50%;
   transform: translateX(-50%);
-  width: min(96%, 540px);
+  width: var(--voice-orb-size);
   aspect-ratio: 1;
   cursor: grab;
 }

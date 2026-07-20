@@ -706,8 +706,8 @@ const drawerSize = computed(() => {
   const width = viewportWidth.value
   if (width <= 1380) return `${Math.min(1040, width)}px`
 
-  const voicePanelWidth = Math.min(420, Math.max(340, width * 0.22))
-  return `${Math.min(1040, width - voicePanelWidth - 16)}px`
+  const voicePanelWidth = Math.min(720, Math.max(480, width * 0.34))
+  return `${width - voicePanelWidth}px`
 })
 
 function updateViewportWidth(): void {
