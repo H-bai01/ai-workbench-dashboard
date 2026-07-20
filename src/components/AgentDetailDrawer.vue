@@ -1,5 +1,5 @@
  <template>
-  <el-drawer v-model="drawerVisible" :title="`Agent 详情：${displayAgentName}`" size="1040px" direction="rtl"
+  <el-drawer v-model="drawerVisible" :title="`Agent 详情：${displayAgentName}`" :size="drawerSize" direction="rtl"
     :close-on-click-modal="true" :z-index="3000" @closed="emit('closed')">
     <template #header>
       <div class="drawer-title">
@@ -699,6 +699,20 @@ const drawerVisible = computed({
   get: () => props.visible,
   set: (val: boolean) => emit('update:visible', val),
 })
+
+const viewportWidth = ref(typeof window === 'undefined' ? 1440 : window.innerWidth)
+
+const drawerSize = computed(() => {
+  const width = viewportWidth.value
+  if (width <= 1380) return `${Math.min(1040, width)}px`
+
+  const voicePanelWidth = Math.min(420, Math.max(340, width * 0.22))
+  return `${Math.min(1040, width - voicePanelWidth - 16)}px`
+})
+
+function updateViewportWidth(): void {
+  viewportWidth.value = window.innerWidth
+}
 
 const agent = computed(() => {
   // Always try to get latest from store
@@ -2575,6 +2589,7 @@ onMounted(() => {
   loadQuickTemplates()
   document.addEventListener('visibilitychange', handleDrawerVisibilityChange)
   window.addEventListener('quick-message-config-updated', onQuickMessageConfigUpdated)
+  window.addEventListener('resize', updateViewportWidth)
 })
 
 onUnmounted(() => {
@@ -2582,6 +2597,7 @@ onUnmounted(() => {
   clearDrawerHistoryTimer()
   document.removeEventListener('visibilitychange', handleDrawerVisibilityChange)
   window.removeEventListener('quick-message-config-updated', onQuickMessageConfigUpdated)
+  window.removeEventListener('resize', updateViewportWidth)
 })
 
 /** 滚动到最后一条消息 */

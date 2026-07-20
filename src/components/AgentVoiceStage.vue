@@ -1119,9 +1119,9 @@ onUnmounted(() => {
   top: 0;
   left: 0;
   bottom: 0;
-  width: max(360px, calc(100vw - 1040px));
-  max-width: 620px;
-  min-width: 320px;
+  width: clamp(340px, 22vw, 420px);
+  max-width: 420px;
+  min-width: 340px;
   pointer-events: auto;
   display: flex;
   align-items: stretch;
