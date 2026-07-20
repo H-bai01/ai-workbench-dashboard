@@ -23,6 +23,8 @@
 - 时间范围与底部摘要范围会记住最后一次选择。
 - 完整统计在后台一次性更新，避免先显示不完整数据再跳变。
 
+![全平台监控对象明细](docs/images/monitor-objects.png)
+
 ### 精确统计 Token 与 API 等价费用
 
 - 汇总 OpenClaw、Codex、Claude Code 的本机 Token 使用量。
@@ -39,6 +41,8 @@
 - 统一查看用户消息、AI 回复、思考摘要、工具调用、工具结果和 Token 记录。
 - OpenClaw 按 Agent 查看，Codex 与 Claude Code 按项目查看。
 - 当前执行记录为只读功能，不会误发送消息或恢复会话。
+
+![OpenClaw 执行记录与工具调用](docs/images/execution-records.png)
 
 ### 管理 AI 工作目录
 
@@ -57,6 +61,8 @@
 - 查看、新建、编辑、暂停、立即执行和删除 Cron 定时任务。
 - 定时任务可查看执行记录、输出和结果。
 
+![AI 工具能力管理](docs/images/tool-capabilities.png)
+
 ![OpenClaw 定时任务中心](docs/images/task-center.png)
 
 ### 通知、更新与回退
@@ -64,6 +70,8 @@
 - 通知中心保留已读历史，错误通知可查看发生时间、来源、错误代码、影响范围和当前结果。
 - 检测 OpenClaw 可用更新，并可从工作台执行安全升级。
 - 内置工作台更新日志、历史版本和版本回退入口。
+
+![工作台版本管理与历史回退](docs/images/version-management.png)
 
 ## 快速开始
 

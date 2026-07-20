@@ -11,9 +11,13 @@ const forbiddenPngChunks = new Set(['eXIf', 'tEXt', 'zTXt', 'iTXt', 'tIME'])
 const concreteHome = /(?:\/Users\/(?![<$%{])[^/\s]+\/|\/home\/(?![<$%{])[^/\s]+\/|[A-Z]:\\Users\\(?![<$%{])[^\\\s]+\\)/i
 const localIdentity = /(?:\b[\w.+-]+@[\w.-]+\.local\b|\b[\w.-]*(?:MacBook|Mac-Pro|iMac)[\w.-]*\b)/i
 const reviewedMedia = new Set([
+  'docs/images/execution-records.png',
   'docs/images/file-management.png',
+  'docs/images/monitor-objects.png',
   'docs/images/task-center.png',
+  'docs/images/tool-capabilities.png',
   'docs/images/usage-details.png',
+  'docs/images/version-management.png',
   'docs/images/workbench-overview.png',
   'public/app-icon.svg',
   'public/app-logos/chatgpt-white-black.svg',
