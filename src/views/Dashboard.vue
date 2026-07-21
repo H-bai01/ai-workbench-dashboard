@@ -1197,6 +1197,7 @@ import { normalizeAgentAvatarSource } from '../utils/agent-presentation.mjs'
 import { createSafeRecord, ownValue, safeRecordFrom } from '../utils/safe-record.mjs'
 import { createProjectTokenScope, normalizeProjectPath, projectFolderName } from '../utils/project-token-scope.mjs'
 import { createUsageStatisticsManager } from '../utils/usage-statistics-manager.mjs'
+import { createSerialPoller } from '../utils/serial-poller'
 import {
   createAiToolRegistry,
   DEFAULT_AI_TOOLS,
@@ -1207,6 +1208,7 @@ import type { ProjectTokenScope } from '../types/project-token-scope'
 import type { SessionObservationScope } from '../types/session-observation'
 import type { NotificationItem } from '../utils/notification-center.mjs'
 import { getOpenClawUpdateStatus, type OpenClawUpdateStatus } from '../api/version-manager'
+import { fetchJson } from '../api/http'
 import {
   Monitor,
   CircleCheck,
@@ -1262,35 +1264,24 @@ function updateClock(): void {
 const WORKFLOW_POLL_INTERVAL = 10000
 const BACKGROUND_WORKFLOW_POLL_INTERVAL = 60000
 const workflowData = ref<WorkflowData>({ activeStep: -1, steps: [] })
-let workflowTimer: ReturnType<typeof setTimeout> | null = null
 
 async function fetchWorkflowData(): Promise<void> {
   try {
-    const res = await fetch('/workflow-progress.json?t=' + Date.now())
-    if (res.ok) {
-      const data: WorkflowData = await res.json()
-      workflowData.value = data
+    const result = await fetchJson<WorkflowData>('/workflow-progress.json?t=' + Date.now())
+    if (result.ok) {
+      workflowData.value = result.data
     }
   } catch {
     // 保持当前值
   }
 }
 
-function scheduleWorkflowPoll(): void {
-  if (workflowTimer) clearTimeout(workflowTimer)
-  workflowTimer = setTimeout(async () => {
-    await fetchWorkflowData()
-    scheduleWorkflowPoll()
-  }, document.hidden ? BACKGROUND_WORKFLOW_POLL_INTERVAL : WORKFLOW_POLL_INTERVAL)
-}
-
 function handleWorkflowVisibilityChange(): void {
   if (document.hidden) {
-    scheduleWorkflowPoll()
+    workflowPoller.reschedule()
     return
   }
-  fetchWorkflowData()
-  scheduleWorkflowPoll()
+  void workflowPoller.runNow()
 }
 
 /** 运行模式标签颜色映射 */
@@ -1409,7 +1400,6 @@ const openClawUpdateTooltip = computed(() => openClawUpdateAvailable.value
   ? `可更新至 ${openClawLatestVersion.value}，点击查看并更新`
   : '点击查看 OpenClaw 版本')
 const OPENCLAW_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
-let openClawUpdateTimer: ReturnType<typeof setInterval> | null = null
 
 function hasNotificationCode(code: string): boolean {
   return store.notifications.some(item => item.errorCode === code)
@@ -1844,15 +1834,12 @@ const monitorDetailStatus = ref<MonitorStatusFilter>('all')
 const monitorShowHidden = ref(false)
 const monitorSourceFilter = ref<PulseAppId[]>(DEFAULT_AI_TOOLS.map((tool) => tool.id))
 const monitorHiddenKeys = ref<string[]>([])
-let localAiUsageTimer: ReturnType<typeof setInterval> | null = null
-let tokenUsagePrewarmTimer: ReturnType<typeof setInterval> | null = null
 let tokenUsagePrewarmInFlight: Promise<boolean> | null = null
 let tokenUsageSnapshotRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let tokenUsageSnapshotRequestId = 0
 let tokenUsageSnapshotAbortController: AbortController | null = null
 let summaryUsageRequestId = 0
 let summaryUsageAbortController: AbortController | null = null
-let localAiStatusTimer: ReturnType<typeof setInterval> | null = null
 
 function toggleTokenMiniMetric(metric: TokenMiniSeriesKey): void {
   const next = new Set(tokenMiniMetricKeys.value)
@@ -2403,9 +2390,9 @@ function findLocalAiStatus(item: LocalAiUsageItem): LocalAiStatusItem | null {
 
 async function fetchLocalAiStatus(): Promise<void> {
   try {
-    const res = await fetch('/api/local-ai-status')
-    if (!res.ok) return
-    const data = await res.json()
+    const result = await fetchJson<{ statuses?: LocalAiStatusItem[] }>('/api/local-ai-status')
+    if (!result.ok) return
+    const data = result.data
     const next: Record<string, LocalAiStatusItem> = createSafeRecord()
     for (const row of (Array.isArray(data.statuses) ? data.statuses : [])) {
       if (!row?.app || !row?.conversationId || !row?.status) continue
@@ -3892,6 +3879,34 @@ function handlePaletteNavigateAgent(agentId: string) {
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
+const workflowPoller = createSerialPoller({
+  task: fetchWorkflowData,
+  getDelayMs: () => document.hidden ? BACKGROUND_WORKFLOW_POLL_INTERVAL : WORKFLOW_POLL_INTERVAL,
+})
+
+const localUsagePoller = createSerialPoller({
+  task: () => {
+    void refreshTokenUsageSnapshot()
+    void refreshSummaryUsage()
+  },
+  getDelayMs: () => 60 * 1000,
+})
+
+const tokenUsagePrewarmPoller = createSerialPoller({
+  task: prewarmTokenUsageRanges,
+  getDelayMs: () => TOKEN_USAGE_PREWARM_INTERVAL_MS,
+})
+
+const localAiStatusPoller = createSerialPoller({
+  task: fetchLocalAiStatus,
+  getDelayMs: () => 5 * 1000,
+})
+
+const openClawUpdatePoller = createSerialPoller({
+  task: checkOpenClawUpdate,
+  getDelayMs: () => OPENCLAW_UPDATE_CHECK_INTERVAL_MS,
+})
+
 onMounted(() => {
   void refreshAll().then(() => checkOpenClawUpdate())
   store.subscribeAgents()
@@ -3900,7 +3915,7 @@ onMounted(() => {
   clockTimer = setInterval(updateClock, 60 * 1000) // update every minute
   // REC-031: 工作流进度 — 前台每 10 秒，后台降到 60 秒
   fetchWorkflowData()
-  scheduleWorkflowPoll()
+  workflowPoller.start()
   document.addEventListener('visibilitychange', handleWorkflowVisibilityChange)
   // REC-011: 加载超时提示 — 每 1 秒检查
   checkLoadingHint()
@@ -3910,15 +3925,10 @@ onMounted(() => {
   })
   void refreshSummaryUsage()
   fetchLocalAiStatus()
-  localAiUsageTimer = setInterval(() => {
-    void refreshTokenUsageSnapshot()
-    void refreshSummaryUsage()
-  }, 60 * 1000)
-  tokenUsagePrewarmTimer = setInterval(() => {
-    void prewarmTokenUsageRanges()
-  }, TOKEN_USAGE_PREWARM_INTERVAL_MS)
-  localAiStatusTimer = setInterval(fetchLocalAiStatus, 5 * 1000)
-  openClawUpdateTimer = setInterval(() => void checkOpenClawUpdate(), OPENCLAW_UPDATE_CHECK_INTERVAL_MS)
+  localUsagePoller.start()
+  tokenUsagePrewarmPoller.start()
+  localAiStatusPoller.start()
+  openClawUpdatePoller.start()
   // Sprint 7: cmd+K
   window.addEventListener('keydown', onGlobalKeydown)
 })
@@ -3936,15 +3946,9 @@ onUnmounted(() => {
     clearInterval(clockTimer)
     clockTimer = null
   }
-  if (openClawUpdateTimer) {
-    clearInterval(openClawUpdateTimer)
-    openClawUpdateTimer = null
-  }
+  openClawUpdatePoller.stop()
   // REC-031: 清理工作流轮询定时器
-  if (workflowTimer) {
-    clearTimeout(workflowTimer)
-    workflowTimer = null
-  }
+  workflowPoller.stop()
   document.removeEventListener('visibilitychange', handleWorkflowVisibilityChange)
   // REC-011: 清理加载提示定时器
   if (loadingHintTimer) {
@@ -3955,18 +3959,9 @@ onUnmounted(() => {
     clearInterval(loadingCheckTimer)
     loadingCheckTimer = null
   }
-  if (localAiUsageTimer) {
-    clearInterval(localAiUsageTimer)
-    localAiUsageTimer = null
-  }
-  if (tokenUsagePrewarmTimer) {
-    clearInterval(tokenUsagePrewarmTimer)
-    tokenUsagePrewarmTimer = null
-  }
-  if (localAiStatusTimer) {
-    clearInterval(localAiStatusTimer)
-    localAiStatusTimer = null
-  }
+  localUsagePoller.stop()
+  tokenUsagePrewarmPoller.stop()
+  localAiStatusPoller.stop()
   // Sprint 7: cmd+K
   window.removeEventListener('keydown', onGlobalKeydown)
 })

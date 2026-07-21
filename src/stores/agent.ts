@@ -5,8 +5,10 @@ import { sessionsList, sessionStatus, health, sessionsHistory, agentsList, getGp
 import { getUsageStats } from '../api/usage-stats'
 import { getVersion } from '../api/system'
 import { getDashboardHealth } from '../api/dashboard'
+import { fetchJson } from '../api/http'
 import { createSafeRecord, ownValue, safeRecordFrom } from '../utils/safe-record.mjs'
 import { formatUptime } from '../utils/uptime.mjs'
+import { createSerialPoller } from '../utils/serial-poller'
 import {
   clearPersistedNotifications,
   loadPersistedNotifications,
@@ -347,8 +349,8 @@ export const useAgentStore = defineStore('agent', () => {
 
   async function fetchBillingConfig(): Promise<void> {
     try {
-      const resp = await fetch('/api/billing-config')
-      if (resp.ok) billingConfig.value = await resp.json()
+      const result = await fetchJson<BillingConfig>('/api/billing-config')
+      if (result.ok) billingConfig.value = result.data
     } catch {
       console.warn('[AgentStore] billing config unavailable; using defaults')
     }
@@ -358,8 +360,8 @@ export const useAgentStore = defineStore('agent', () => {
   const costSummary = ref<{ todayCNY: number; monthCNY: number; monthForecastCNY: number } | null>(null)
   async function fetchCostSummary(): Promise<void> {
     try {
-      const resp = await fetch('/api/cost-summary')
-      if (resp.ok) costSummary.value = await resp.json()
+      const result = await fetchJson<{ todayCNY: number; monthCNY: number; monthForecastCNY: number }>('/api/cost-summary')
+      if (result.ok) costSummary.value = result.data
     } catch {
       console.warn('[AgentStore] cost summary unavailable')
     }
@@ -367,12 +369,12 @@ export const useAgentStore = defineStore('agent', () => {
 
   async function saveBillingConfig(cfg: BillingConfig): Promise<{ success: boolean; error?: string }> {
     try {
-      const resp = await fetch('/api/billing-config', {
+      const result = await fetchJson<{ success?: boolean; error?: string }>('/api/billing-config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(cfg),
       })
-      const data = await resp.json()
+      const data = result.data
       if (data.success) {
         billingConfig.value = cfg
         return { success: true }
@@ -1348,52 +1350,15 @@ export const useAgentStore = defineStore('agent', () => {
     return AGENT_STATUS_FOREGROUND_INTERVAL
   }
 
-  function startAdaptivePoll(task: () => void | Promise<void>, foregroundMs: number, backgroundMs: number): () => void {
-    let timer: ReturnType<typeof setTimeout> | null = null
-    let stopped = false
-
-    const schedule = () => {
-      if (stopped || !isPolling.value) return
-      timer = setTimeout(run, isPageHidden() ? backgroundMs : foregroundMs)
-    }
-
-    const run = () => {
-      if (stopped || !isPolling.value) return
-      Promise.resolve(task())
-        .catch(() => console.warn('[AgentStore] adaptive poll failed'))
-        .finally(schedule)
-    }
-
-    schedule()
-
-    return () => {
-      stopped = true
-      if (timer) clearTimeout(timer)
-    }
-  }
-
-  function startDynamicPoll(task: () => void | Promise<void>, getDelayMs: () => number): () => void {
-    let timer: ReturnType<typeof setTimeout> | null = null
-    let stopped = false
-
-    const schedule = () => {
-      if (stopped || !isPolling.value) return
-      timer = setTimeout(run, getDelayMs())
-    }
-
-    const run = () => {
-      if (stopped || !isPolling.value) return
-      Promise.resolve(task())
-        .catch(() => console.warn('[AgentStore] dynamic poll failed'))
-        .finally(schedule)
-    }
-
-    schedule()
-
-    return () => {
-      stopped = true
-      if (timer) clearTimeout(timer)
-    }
+  function startStorePoll(task: () => void | Promise<void>, getDelayMs: () => number): () => void {
+    const poller = createSerialPoller({
+      task,
+      getDelayMs,
+      isActive: () => isPolling.value,
+      onError: () => console.warn('[AgentStore] poll failed'),
+    })
+    poller.start()
+    return poller.stop
   }
 
   async function subscribeAgents(): Promise<() => void> {
@@ -1401,14 +1366,14 @@ export const useAgentStore = defineStore('agent', () => {
 
     // Agent 状态是首页最敏感的信息，先启动轮询，避免被费用/配置等初始化接口拖慢。
     const pollCleanups = [
-      startDynamicPoll(fetchAgents, currentAgentStatusPollInterval),
-      startAdaptivePoll(fetchHealth, HEALTH_CHECK_INTERVAL, BACKGROUND_HEALTH_CHECK_INTERVAL),
-      startAdaptivePoll(fetchGpuVram, GPU_POLL_INTERVAL, BACKGROUND_GPU_POLL_INTERVAL),
-      startAdaptivePoll(checkNewMessages, MESSAGE_POLL_INTERVAL, BACKGROUND_MESSAGE_POLL_INTERVAL),
-      startAdaptivePoll(() => {
+      startStorePoll(fetchAgents, currentAgentStatusPollInterval),
+      startStorePoll(fetchHealth, () => isPageHidden() ? BACKGROUND_HEALTH_CHECK_INTERVAL : HEALTH_CHECK_INTERVAL),
+      startStorePoll(fetchGpuVram, () => isPageHidden() ? BACKGROUND_GPU_POLL_INTERVAL : GPU_POLL_INTERVAL),
+      startStorePoll(checkNewMessages, () => isPageHidden() ? BACKGROUND_MESSAGE_POLL_INTERVAL : MESSAGE_POLL_INTERVAL),
+      startStorePoll(() => {
         fetchGlobalUsage()
         fetchCostSummary()
-      }, USAGE_POLL_INTERVAL, BACKGROUND_USAGE_POLL_INTERVAL),
+      }, () => isPageHidden() ? BACKGROUND_USAGE_POLL_INTERVAL : USAGE_POLL_INTERVAL),
     ]
 
     await Promise.all([fetchAgents(), fetchGlobalUsage(), fetchAgentNames(), fetchGpuVram(), fetchBillingConfig(), fetchCostSummary()])

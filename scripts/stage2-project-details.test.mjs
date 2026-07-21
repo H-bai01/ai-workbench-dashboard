@@ -113,8 +113,9 @@ test('健康轮询不再从一秒 Agent状态轮询读取 Gateway uptime', () =>
   const source = fs.readFileSync(path.join(repo, 'src/stores/agent.ts'), 'utf8')
   assert.equal(source.includes('Gateway uptime not found'), false)
   assert.equal(source.includes('fetchGatewayUptime'), false)
-  assert.match(source, /startDynamicPoll\(fetchAgents, currentAgentStatusPollInterval\)/)
-  assert.match(source, /startAdaptivePoll\(fetchHealth, HEALTH_CHECK_INTERVAL/)
+  assert.match(source, /startStorePoll\(fetchAgents, currentAgentStatusPollInterval\)/)
+  assert.match(source, /startStorePoll\(fetchHealth, \(\) => isPageHidden\(\)/)
+  assert.match(source, /createSerialPoller/)
 })
 
 test('模型占比使用模型明细合计并始终限制在 0 到 100', () => {
