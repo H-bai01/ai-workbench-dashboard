@@ -3892,8 +3892,8 @@ onUnmounted(() => {
 .dashboard {
   --dashboard-inline-gutter: clamp(14px, 1.5vw, 40px);
   --dashboard-layout-gap: clamp(12px, 1vw, 24px);
-  height: 100vh;
-  height: 100dvh;
+  height: var(--workbench-dashboard-height-vh, 100vh);
+  height: var(--workbench-dashboard-height-dvh, 100dvh);
   min-height: 0;
   overflow-x: hidden;
   overflow-y: scroll;
@@ -6964,19 +6964,7 @@ onUnmounted(() => {
  * 1100–1400px。只换栏会让整个平台看起来像被放大；这里让文字、按钮、
  * 卡片和间距一起缩放，并用反向尺寸补偿保持页面铺满窗口。
  */
-@media (min-width: 920px) and (max-width: 1099px) {
-  .dashboard {
-    height: 111.112vh;
-    height: 111.112dvh;
-  }
-}
-
 @media (min-width: 1100px) and (max-width: 1499px) {
-  .dashboard {
-    height: 125vh;
-    height: 125dvh;
-  }
-
   /* 缩放后可用布局宽度已经足够，恢复紧凑三栏而不是把排行榜挤到下一行。 */
   .cockpit-inner {
     grid-template-columns:
@@ -7052,12 +7040,6 @@ onUnmounted(() => {
   }
 }
 
-@media (min-width: 1400px) and (max-width: 1799px) {
-  .dashboard {
-    height: 111.112vh;
-    height: 111.112dvh;
-  }
-}
 html.light-theme .token-mini-value-label {
   stroke: #ffffff;
   stroke-width: 4px;

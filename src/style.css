@@ -27,6 +27,11 @@
   --glass-card-border: rgba(235, 235, 245, 0.16);
   --glass-inner-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.085);
   --glass-shadow: 0 18px 48px rgba(0, 0, 0, 0.22);
+  --workbench-page-zoom: 1;
+  --workbench-app-height-vh: 100vh;
+  --workbench-app-height-dvh: 100dvh;
+  --workbench-dashboard-height-vh: 100vh;
+  --workbench-dashboard-height-dvh: 100dvh;
 }
 
 /* ============================================================
@@ -38,11 +43,14 @@ body {
   background-image: none;
   color: var(--text-primary) !important;
   font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Inter', 'Segoe UI', sans-serif !important;
+  zoom: var(--workbench-page-zoom);
 }
 
 #app {
   background: transparent !important;
   color: var(--text-primary) !important;
+  min-height: var(--workbench-app-height-vh);
+  min-height: var(--workbench-app-height-dvh);
 }
 
 /*
@@ -50,35 +58,39 @@ body {
  * 弹窗、抽屉和浮层使用同一视觉比例，而不是只有首页卡片变小。
  */
 @media (min-width: 920px) and (max-width: 1099px) {
-  body {
-    zoom: 0.9;
-  }
-
-  #app {
-    min-height: 111.112vh;
-    min-height: 111.112dvh;
+  :root {
+    --workbench-page-zoom: 0.9;
+    --workbench-app-height-vh: 111.112vh;
+    --workbench-app-height-dvh: 111.112dvh;
+    --workbench-dashboard-height-vh: 111.112vh;
+    --workbench-dashboard-height-dvh: 111.112dvh;
   }
 }
 
 @media (min-width: 1100px) and (max-width: 1399px) {
-  body {
-    zoom: 0.8;
-  }
-
-  #app {
-    min-height: 125vh;
-    min-height: 125dvh;
+  :root {
+    --workbench-page-zoom: 0.8;
+    --workbench-app-height-vh: 125vh;
+    --workbench-app-height-dvh: 125dvh;
+    --workbench-dashboard-height-vh: 125vh;
+    --workbench-dashboard-height-dvh: 125dvh;
   }
 }
 
 @media (min-width: 1400px) and (max-width: 1799px) {
-  body {
-    zoom: 0.9;
+  :root {
+    --workbench-page-zoom: 0.9;
+    --workbench-app-height-vh: 111.112vh;
+    --workbench-app-height-dvh: 111.112dvh;
+    --workbench-dashboard-height-vh: 111.112vh;
+    --workbench-dashboard-height-dvh: 111.112dvh;
   }
+}
 
-  #app {
-    min-height: 111.112vh;
-    min-height: 111.112dvh;
+@media (min-width: 1400px) and (max-width: 1499px) {
+  :root {
+    --workbench-dashboard-height-vh: 125vh;
+    --workbench-dashboard-height-dvh: 125dvh;
   }
 }
 
