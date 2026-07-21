@@ -45,3 +45,25 @@ The density bands are intentionally tied to the effective CSS viewport rather th
 - No new browser console error was introduced by the responsive CSS.
 
 final result: passed
+
+---
+
+# Cost chart and leaderboard alignment QA
+
+- Source visual truth: `/var/folders/6j/yplkbbr50h56qlnp5f7zv_7h0000gn/T/codex-clipboard-308bfe38-a0f3-4cf1-8003-6e64039a996c.png`
+- Implementation screenshot: `/private/tmp/ai-workbench-cost-card-aligned.png`
+- Combined comparison: `/private/tmp/ai-workbench-cost-card-comparison.png`
+- Viewport: `1693 × 630` CSS px, dashboard density scale `0.9`
+- State: dark theme, 30-day range, model and ranking lists collapsed
+
+## Comparison evidence
+
+The requested visual baseline is the bottom edge of the cost chart and the bottom edge of the leaderboard's fifth row. Before the correction, the chart ended `36px` lower than the fifth row at the tested viewport. After the correction, the measured difference is `0.16px`, which is the expected subpixel rounding from the responsive density scale.
+
+The model summary still displays three rows, the leaderboard still displays seven rows, and the shared expand/collapse behavior remains unchanged. The adjustment is restricted to desktop three-column layouts; stacked tablet and mobile layouts retain their existing flexible chart sizing.
+
+## Findings
+
+No actionable P0, P1, P2 or P3 difference remains for the requested alignment.
+
+final result: passed

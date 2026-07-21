@@ -5013,6 +5013,17 @@ onUnmounted(() => {
   -webkit-backdrop-filter: blur(14px) saturate(1.22);
 }
 
+/*
+ * 桌面三栏下，费用图表底部与排行榜第 5 名底部使用同一视觉基线。
+ * 185px 是未缩放布局尺寸；页面的响应式整体缩放会同步换算为实际像素。
+ */
+@media (min-width: 1100px) {
+  .token-mini-chart {
+    flex: 0 0 185px;
+    height: 185px;
+  }
+}
+
 .token-mini-chart-head {
   display: flex;
   align-items: center;
