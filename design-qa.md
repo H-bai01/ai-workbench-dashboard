@@ -48,6 +48,59 @@ final result: passed
 
 ---
 
+# Sparse cockpit adaptive-height QA
+
+- Source visual truth:
+  - `/var/folders/6j/yplkbbr50h56qlnp5f7zv_7h0000gn/T/codex-clipboard-acc1237c-ba79-411e-8369-0fa6f02257af.png`
+  - `/var/folders/6j/yplkbbr50h56qlnp5f7zv_7h0000gn/T/codex-clipboard-7040d872-0922-4c45-afac-f2fb15c3fb1b.png`
+  - `/var/folders/6j/yplkbbr50h56qlnp5f7zv_7h0000gn/T/codex-clipboard-1fb2cf58-733b-4e56-900e-b3be4019ed22.png`
+- Same-viewport implementation screenshot: `/private/tmp/ai-workbench-adaptive-same-viewport.png`
+- Expanded-state implementation screenshot: `/private/tmp/ai-workbench-adaptive-expanded.png`
+- Viewport comparison: `1686 × 828` CSS px, dark theme, `上个月`, collapsed lists
+- Additional responsive checks: `1660 × 640` and `1400 × 850`, collapsed and synchronized expanded states
+
+## Comparison evidence
+
+The source captures show fixed-height cockpit cards retaining several hundred pixels of empty space when only two model rows, one Agent, or a short ranking list is available. The three cards also end at visibly different vertical positions, while the narrow left card lets the percentage column crowd the cost value.
+
+The same-viewport implementation removes the fixed desktop card height. Each list now derives its visible height from the number of rows actually rendered, the CSS grid row stretches the three siblings to one shared height, and all three card bottoms align exactly. At the tested sparse `7 天` state the shared card height contracts to `379.16px`; at denser `30 天` and `上个月` states it grows to `411.56px`. The maximum measured bottom-edge difference is `0px`.
+
+The expanded-state capture verifies that both list scrollbars remain visible, expansion still grows the shared row, and cards remain aligned. At `1400px`, every model row stays inside the left card; no name, token, cost, or percentage child crosses its row boundary.
+
+## Findings
+
+No actionable P0, P1, P2 or P3 visual issue remains for the requested adaptive contraction and alignment behavior.
+
+## Primary interactions checked
+
+- Switching between `7 天`, `30 天` and `上个月` updates content density without restoring a fixed blank area.
+- Expanding and collapsing the contribution list keeps model and ranking states synchronized.
+- Expanded lists retain visible scrollbars and can reveal the remaining rows.
+- Sparse and dense states keep all three cockpit card bottoms aligned.
+- Narrow left-card model values remain contained and readable.
+
+final result: passed
+
+---
+
+# Model-row and chart-width alignment QA
+
+- Source visual truth: `/var/folders/6j/yplkbbr50h56qlnp5f7zv_7h0000gn/T/codex-clipboard-1fb2cf58-733b-4e56-900e-b3be4019ed22.png`
+- Implementation screenshot: `/private/tmp/ai-workbench-model-row-width-aligned.png`
+- Viewport: `1664 × 641` CSS px, dark theme, `7 天`, collapsed lists
+
+## Comparison evidence
+
+The reported mismatch is inside the left cost card: the collapsed model rows ended early because the model list permanently reserved a scrollbar gutter, while the chart used the full content width. The implementation removes that gutter when the list is collapsed, so the left and right edges of every model row now match the chart card. The gutter is restored only in expanded mode where the visible scrollbar needs clearance.
+
+## Findings
+
+No actionable P0, P1, P2 or P3 visual issue remains for the requested internal width alignment.
+
+final result: passed
+
+---
+
 # Cost chart and leaderboard alignment QA
 
 - Source visual truth: `/var/folders/6j/yplkbbr50h56qlnp5f7zv_7h0000gn/T/codex-clipboard-308bfe38-a0f3-4cf1-8003-6e64039a996c.png`

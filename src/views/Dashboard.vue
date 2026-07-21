@@ -393,7 +393,8 @@
             :class="{
               'is-expanded': modelShareExpanded,
             }"
-            :height="modelShareExpanded ? 248 : 104"
+            :height="modelShareScrollHeight"
+            :style="{ '--model-share-scroll-height': `${modelShareScrollHeight}px` }"
             :always="modelShareExpanded"
           >
             <div
@@ -546,6 +547,8 @@
             :class="{
               'is-expanded': contributionExpanded,
             }"
+            :height="contributionScrollHeight"
+            :style="{ '--contribution-scroll-height': `${contributionScrollHeight}px` }"
             :always="contributionExpanded"
           >
             <div class="contribution-list">
@@ -3589,6 +3592,13 @@ const contributionExpandedVisibleCount = computed(() => Math.min(
   contributionRows.value.length,
   CONTRIBUTION_EXPANDED_VISIBLE_COUNT,
 ))
+const contributionScrollHeight = computed(() => {
+  const visibleRowCapacity = contributionExpanded.value
+    ? CONTRIBUTION_EXPANDED_VISIBLE_COUNT
+    : CONTRIBUTION_COLLAPSED_COUNT
+  const rowCount = Math.min(contributionRows.value.length, visibleRowCapacity)
+  return rowCount > 0 ? rowCount * 46 - 6 : 0
+})
 
 function contributionWidth(value: number): string {
   const max = contributionRows.value[0]?.usageValue || 1
@@ -3636,6 +3646,13 @@ const modelShareExpandedVisibleCount = computed(() => Math.min(
   modelShareRows.value.length,
   MODEL_SHARE_EXPANDED_VISIBLE_COUNT,
 ))
+const modelShareScrollHeight = computed(() => {
+  const visibleRowCapacity = modelShareExpanded.value
+    ? MODEL_SHARE_EXPANDED_VISIBLE_COUNT
+    : MODEL_SHARE_COLLAPSED_COUNT
+  const rowCount = Math.min(modelShareRows.value.length, visibleRowCapacity)
+  return rowCount > 0 ? rowCount * 36 - 4 : 0
+})
 
 function setOverviewListsExpanded(expanded: boolean): void {
   modelShareExpanded.value = expanded
@@ -4838,9 +4855,9 @@ onUnmounted(() => {
   border-radius: 8px;
   padding: 16px;
   min-width: 0;
-  height: calc(clamp(470px, 24vw, 500px) + 29px);
-  min-height: 499px;
-  max-height: 529px;
+  height: auto;
+  min-height: 0;
+  max-height: none;
   display: flex;
   flex-direction: column;
   backdrop-filter: var(--glass-blur);
@@ -4851,19 +4868,12 @@ onUnmounted(() => {
     0 18px 46px rgba(0, 0, 0, 0.22);
 }
 
-@media (min-width: 1500px) {
-  .cockpit-inner.has-expanded-summary .cockpit-card {
-    height: calc(clamp(470px, 24vw, 500px) + 176px);
-    min-height: 646px;
-    max-height: 676px;
-  }
-}
-
 .contribution-card {
-  min-height: 499px;
+  min-height: 0;
 }
 
 .token-cockpit-card {
+  container-type: inline-size;
   cursor: pointer;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
   overflow: hidden;
@@ -5176,13 +5186,13 @@ onUnmounted(() => {
 }
 
 .model-share-scroll {
-  flex: 0 0 104px;
-  height: 104px;
+  flex: 0 0 var(--model-share-scroll-height, 104px);
+  height: var(--model-share-scroll-height, 104px);
 }
 
 .model-share-scroll.is-expanded {
-  flex-basis: 248px;
-  height: 248px;
+  flex-basis: var(--model-share-scroll-height, 248px);
+  height: var(--model-share-scroll-height, 248px);
 }
 
 .model-share-scroll :deep(.el-scrollbar__wrap) {
@@ -5211,6 +5221,10 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  padding-right: 0;
+}
+
+.model-share-scroll.is-expanded .model-share-list {
   padding-right: 12px;
 }
 
@@ -5230,8 +5244,8 @@ onUnmounted(() => {
 
 .model-share-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-  gap: 10px;
+  grid-template-columns: 24px minmax(64px, 1fr) minmax(0, auto) minmax(26px, auto);
+  gap: clamp(5px, 0.6vw, 10px);
   align-items: center;
   font-size: 12.5px;
   width: 100%;
@@ -5240,7 +5254,7 @@ onUnmounted(() => {
   background: transparent;
   color: inherit;
   font-family: inherit;
-  padding: 3px 10px;
+  padding: 3px clamp(6px, 0.7vw, 10px);
   min-height: 32px;
   cursor: pointer;
   text-align: left;
@@ -5301,6 +5315,7 @@ onUnmounted(() => {
 .model-brand-mark--generic { background: linear-gradient(135deg, rgba(142, 142, 147, 0.72), rgba(99, 102, 241, 0.58)); }
 
 .model-share-token {
+  min-width: 0;
   color: var(--text-primary, #e5e5ea);
   font-weight: 700;
   white-space: nowrap;
@@ -5309,7 +5324,7 @@ onUnmounted(() => {
 .model-share-token.metric-pair {
   flex-direction: row;
   align-items: center;
-  gap: 10px;
+  gap: clamp(4px, 0.55vw, 10px);
 }
 
 .metric-pair {
@@ -5324,8 +5339,28 @@ onUnmounted(() => {
 .model-share-pct {
   color: var(--text-muted, #8e8e93);
   font-variant-numeric: tabular-nums;
-  width: 34px;
+  width: clamp(26px, 2vw, 34px);
   text-align: right;
+}
+
+@container (max-width: 460px) {
+  .model-share-row {
+    font-size: 11px;
+  }
+
+  .model-share-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .model-share-token.metric-pair {
+    font-size: 10.5px;
+  }
+
+  .model-share-pct {
+    font-size: 10.5px;
+  }
 }
 
 .agent-pulse-summary {
@@ -5678,13 +5713,14 @@ onUnmounted(() => {
 }
 
 .contribution-scroll {
-  flex: 1;
+  flex: 0 0 var(--contribution-scroll-height, 318px);
+  height: var(--contribution-scroll-height, 318px);
   min-height: 0;
 }
 
 .contribution-scroll:not(.is-expanded) {
-  flex: 0 0 318px;
-  height: 318px;
+  flex-basis: var(--contribution-scroll-height, 318px);
+  height: var(--contribution-scroll-height, 318px);
 }
 
 .contribution-scroll :deep(.el-scrollbar__wrap) {
@@ -6730,23 +6766,23 @@ onUnmounted(() => {
 
   .cockpit-card {
     height: auto;
-    min-height: 420px;
+    min-height: 0;
     max-height: none;
   }
 
   .contribution-card {
     grid-column: 1 / -1;
-    min-height: 390px;
+    min-height: 0;
   }
 
   .cockpit-inner.has-expanded-summary .cockpit-card {
     height: auto;
-    min-height: 540px;
+    min-height: 0;
     max-height: none;
   }
 
   .cockpit-inner.has-expanded-summary .contribution-card {
-    min-height: 540px;
+    min-height: 0;
   }
 }
 
@@ -7037,16 +7073,16 @@ onUnmounted(() => {
   .cockpit-card,
   .contribution-card {
     grid-column: auto;
-    height: calc(clamp(470px, 24vw, 500px) + 29px);
-    min-height: 499px;
-    max-height: 529px;
+    height: auto;
+    min-height: 0;
+    max-height: none;
   }
 
   .cockpit-inner.has-expanded-summary .cockpit-card,
   .cockpit-inner.has-expanded-summary .contribution-card {
-    height: calc(clamp(470px, 24vw, 500px) + 176px);
-    min-height: 646px;
-    max-height: 676px;
+    height: auto;
+    min-height: 0;
+    max-height: none;
   }
 
   .scope-toolbar {
