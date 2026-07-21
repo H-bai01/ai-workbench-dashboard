@@ -4851,7 +4851,7 @@ onUnmounted(() => {
     0 18px 46px rgba(0, 0, 0, 0.22);
 }
 
-@media (min-width: 1281px) {
+@media (min-width: 1500px) {
   .cockpit-inner.has-expanded-summary .cockpit-card {
     height: calc(clamp(470px, 24vw, 500px) + 176px);
     min-height: 646px;
@@ -6710,6 +6710,35 @@ onUnmounted(() => {
   }
 }
 
+/* 普通笔记本和较小桌面窗口：保留两栏，不让三栏突然坍缩成单栏。 */
+@media (max-width: 1499px) {
+  .cockpit-inner {
+    grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
+    align-items: stretch;
+  }
+
+  .cockpit-card {
+    height: auto;
+    min-height: 420px;
+    max-height: none;
+  }
+
+  .contribution-card {
+    grid-column: 1 / -1;
+    min-height: 390px;
+  }
+
+  .cockpit-inner.has-expanded-summary .cockpit-card {
+    height: auto;
+    min-height: 540px;
+    max-height: none;
+  }
+
+  .cockpit-inner.has-expanded-summary .contribution-card {
+    min-height: 540px;
+  }
+}
+
 @media (max-width: 1280px) {
   .scope-toolbar {
     align-items: flex-start;
@@ -6722,16 +6751,6 @@ onUnmounted(() => {
 
   .scope-toolbar-controls {
     width: 100%;
-  }
-
-  .cockpit-inner {
-    grid-template-columns: 1fr;
-  }
-
-  .cockpit-card {
-    height: auto;
-    min-height: 356px;
-    max-height: none;
   }
 
   .control-dock-inner {
@@ -6759,6 +6778,35 @@ onUnmounted(() => {
   .action-bar-inner {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .action-slot,
+  .action-slot--primary,
+  .action-slot--primary-last,
+  .action-slot--secondary-wide,
+  .action-slot--secondary {
+    grid-column: span 1;
+  }
+}
+
+@media (max-width: 1180px) {
+  .status-bar-inner {
+    gap: 10px;
+  }
+
+  .status-top-right {
+    width: 100%;
+    min-width: 0;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 2px 0 5px;
+    scrollbar-width: thin;
+  }
+
+  .top-control-slot {
+    flex: 0 0 auto;
+  }
 }
 
 @media (max-width: 1024px) {
@@ -6772,6 +6820,27 @@ onUnmounted(() => {
 
   .board-column {
     max-width: 100%;
+  }
+}
+
+/* 平板和窄窗口：主卡片依次纵向排列。 */
+@media (max-width: 920px) {
+  .cockpit-inner {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cockpit-card,
+  .contribution-card,
+  .cockpit-inner.has-expanded-summary .cockpit-card,
+  .cockpit-inner.has-expanded-summary .contribution-card {
+    grid-column: auto;
+    height: auto;
+    min-height: 356px;
+    max-height: none;
+  }
+
+  .action-bar-inner {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -6792,9 +6861,9 @@ onUnmounted(() => {
     border-left: 0;
   }
 
-  .status-indicators {
+  .status-indicators,
+  .status-top-right {
     width: 100%;
-    flex-wrap: wrap;
     gap: 6px;
   }
 
@@ -6848,6 +6917,52 @@ onUnmounted(() => {
   .module-card-hints {
     grid-column: 1 / -1;
     flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 720px) {
+  .scope-toolbar-main {
+    flex-wrap: wrap;
+    padding-right: 0;
+  }
+
+  .token-mini-custom-range {
+    width: min(100%, 360px) !important;
+    flex: 1 1 260px;
+  }
+
+  .token-mini-ranges {
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    justify-content: flex-start;
+    scrollbar-width: thin;
+  }
+
+  .token-mini-ranges .token-mini-chip {
+    flex: 0 0 auto;
+  }
+
+  .scope-toolbar-controls {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 560px) {
+  .action-bar-inner {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .agent-pulse-app-tabs {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cockpit-section {
+    padding-inline: 10px;
+  }
+
+  .scope-toolbar {
+    padding: 9px;
   }
 }
 
