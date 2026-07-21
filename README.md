@@ -1,6 +1,6 @@
 # AI 工作台总控 / AI Workbench Dashboard
 
-把 OpenClaw、Codex、Claude Code 等本机 AI 工具放进同一个可视化工作台：看运行状态、Token 与 API 等价费用、项目与会话、工具调用、工作目录、定时任务和版本更新。
+一个面向本机 AI 工具的统一监控与管理台。把 OpenClaw、Codex、Claude Code 等工具放进同一个界面，集中查看运行状态、Token 与 API 等价费用、项目与会话、工具调用、工作目录、自动任务和版本更新。
 
 当前本地正式版本：`v2.12.2`。
 
@@ -12,12 +12,19 @@
 
 ![AI 工作台总览](docs/images/workbench-overview.png)
 
+## 你可以用它做什么
+
+- **看清全局：** 一眼看到哪些 AI 工具、Agent 和项目正在工作，以及当前运行、空闲、终止和错误状态。
+- **看懂消耗：** 汇总本机 Token 与 API 等价费用，并按模型、项目、Agent、会话和时间继续查看。
+- **追踪过程：** 在统一时间线和执行记录中查看消息、思考摘要、工具调用、结果与上下文消耗。
+- **集中管理：** 管理 AI 工作目录、技能、自动任务、通知、工具更新和工作台历史版本。
+
 ## 主要功能
 
-### 一个页面掌握所有 AI 工作
+### 在一个页面看清所有 AI 工作
 
 - OpenClaw 按 Agent 展示，Codex 与 Claude Code 按项目展示。
-- 监控对象、详情、活动时间线、搜索和任务看板使用统一结构，新 AI 工具可通过适配器继续接入。
+- 监控对象、详情、活动时间线、搜索和任务看板采用统一结构，后续可以继续接入更多 AI 工具。
 - 统一查看运行、空闲、终止和错误状态。
 - 支持今天、3 天、7 天、30 天、本月、上个月和全部时间范围。
 - 时间范围与底部摘要范围会记住最后一次选择。
@@ -25,31 +32,45 @@
 
 ![全平台监控对象明细](docs/images/monitor-objects.png)
 
-### 精确统计 Token 与 API 等价费用
+### 监控 Token 消耗
 
 - 汇总 OpenClaw、Codex、Claude Code 的本机 Token 使用量。
 - 按模型、Agent、项目、会话和时间查看明细。
-- 识别输入、输出和缓存 Token，按模型价格计算 API 等价费用。
 - 支持趋势图、模型排行、贡献排行和项目专属明细。
-- 未识别模型会明确报错，不使用猜测价格。
 
 ![项目 Token 与费用明细](docs/images/usage-details.png)
+
+### 管理计费规则
+
+- 识别输入、输出和缓存 Token，按模型价格计算 API 等价费用。
+- 只有成功识别模型并匹配计费规则后才计入费用；异常会进入通知中心。
 
 模型价格可直接在工作台维护，支持输入、输出、缓存读写价格和分时折扣。
 
 ![按模型维护计费规则](docs/images/billing-config.png)
 
-### 查看项目与执行记录
+### 与 Agent 语音对话并快捷发消息
 
-- 从工作脉冲、贡献排行或监控明细进入同一项目范围。
-- 统一查看用户消息、AI 回复、思考摘要、工具调用、工具结果和 Token 记录。
-- OpenClaw 按 Agent 查看，Codex 与 Claude Code 按项目查看。
-- 当前执行记录为只读功能，不会误发送消息或恢复会话。
-- 活动时间线把不同 AI 工具的会话放在同一条时间轴中，可按工具、时间和会话查看。
+- 查看 OpenClaw Agent 详情、对话历史、模型和上下文消耗。
+- 使用快捷发消息面板选择 Agent、常用模板并发送消息。
+- Agent 语音界面将语音互动、文字会话、上下文和历史 Token 信息放在同一窗口。
 
-![OpenClaw 执行记录与工具调用](docs/images/execution-records.png)
+![Agent 语音与文字会话](docs/images/agent-voice.png)
 
-![全平台 AI 工具活动时间线](docs/images/activity-timeline.png)
+![向 Agent 快捷发消息](docs/images/quick-message.png)
+
+### 管理 Agent 技能
+
+- 管理 Agent 技能，按已配置、未安装、Agent 和使用情况分类查看。
+
+![AI 工具能力管理](docs/images/tool-capabilities.png)
+
+### 管理任务中心
+
+- 查看、新建、编辑、暂停、立即执行和删除 Cron 定时任务。
+- 定时任务可查看执行记录、输出和结果。
+
+![OpenClaw 定时任务中心](docs/images/task-center.png)
 
 ### 管理 AI 工作目录
 
@@ -61,26 +82,19 @@
 
 ![AI 工作目录管理](docs/images/file-management.png)
 
-### 管理 Agent、技能与定时任务
+### 回看项目、会话与执行过程
 
-- 查看 OpenClaw Agent 详情、对话历史、模型和上下文消耗。
-- 使用快捷发消息面板选择 Agent、常用模板并发送消息。
-- Agent 语音界面可使用当前音色朗读消息，并保留文字会话、上下文和历史 Token 信息。
-- 管理 Agent 技能，按已配置、未安装、Agent 和使用情况分类查看。
-- 查看、新建、编辑、暂停、立即执行和删除 Cron 定时任务。
-- 定时任务可查看执行记录、输出和结果。
+- 从工作脉冲、贡献排行或监控明细进入同一项目范围。
+- 统一查看用户消息、AI 回复、思考摘要、工具调用、工具结果和 Token 记录。
+- OpenClaw 按 Agent 查看，Codex 与 Claude Code 按项目查看。
+- 执行记录保持只读，查看历史时不会误发送消息或恢复会话。
+- 活动时间线把不同 AI 工具的会话放在同一条时间轴中，可按工具、时间和会话查看。
 
-![OpenClaw Agent 详情](docs/images/agent-detail.png)
+![OpenClaw 执行记录与工具调用](docs/images/execution-records.png)
 
-![向 Agent 快捷发消息](docs/images/quick-message.png)
+![全平台 AI 工具活动时间线](docs/images/activity-timeline.png)
 
-![Agent 语音与文字会话](docs/images/agent-voice.png)
-
-![AI 工具能力管理](docs/images/tool-capabilities.png)
-
-![OpenClaw 定时任务中心](docs/images/task-center.png)
-
-### 快速查找与个性化布局
+### 快速查找并调整工作台
 
 - 全局搜索可定位功能、AI 工具对象、项目、会话和历史消息。
 - 页面模块、顶栏工具、功能按钮和统计卡片均可调整顺序，并自动记住布局。
@@ -89,11 +103,11 @@
 
 ![自定义工作台布局](docs/images/custom-layout.png)
 
-### 通知、更新与回退
+### 查看通知、更新与历史版本
 
 - 通知中心保留已读历史，错误通知可查看发生时间、来源、错误代码、影响范围和当前结果。
-- 检测 OpenClaw 可用更新，并可从工作台执行安全升级。
-- 内置工作台更新日志、历史版本和版本回退入口。
+- 检测 OpenClaw 可用版本，并可从工作台完成更新。
+- 工作台内置更新日志、历史版本和版本回退入口。
 
 ![工作台版本管理与历史回退](docs/images/version-management.png)
 
