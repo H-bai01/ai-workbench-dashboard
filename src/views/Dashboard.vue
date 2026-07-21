@@ -6996,6 +6996,106 @@ onUnmounted(() => {
     padding: 10px 12px;
   }
 }
+
+/*
+ * 统一视觉密度：高 DPI 笔记本的物理分辨率很高，但 CSS 视口通常只有
+ * 1100–1400px。只换栏会让整个平台看起来像被放大；这里让文字、按钮、
+ * 卡片和间距一起缩放，并用反向尺寸补偿保持页面铺满窗口。
+ */
+@media (min-width: 920px) and (max-width: 1099px) {
+  .dashboard {
+    height: 111.112vh;
+    height: 111.112dvh;
+  }
+}
+
+@media (min-width: 1100px) and (max-width: 1499px) {
+  .dashboard {
+    height: 125vh;
+    height: 125dvh;
+  }
+
+  /* 缩放后可用布局宽度已经足够，恢复紧凑三栏而不是把排行榜挤到下一行。 */
+  .cockpit-inner {
+    grid-template-columns:
+      minmax(360px, 1fr)
+      520px
+      clamp(420px, calc(420px + (100vw - 1100px) * 0.22), 486px);
+  }
+
+  .cockpit-card,
+  .contribution-card {
+    grid-column: auto;
+    height: calc(clamp(470px, 24vw, 500px) + 29px);
+    min-height: 499px;
+    max-height: 529px;
+  }
+
+  .cockpit-inner.has-expanded-summary .cockpit-card,
+  .cockpit-inner.has-expanded-summary .contribution-card {
+    height: calc(clamp(470px, 24vw, 500px) + 176px);
+    min-height: 646px;
+    max-height: 676px;
+  }
+
+  .scope-toolbar {
+    align-items: center;
+    flex-wrap: nowrap;
+  }
+
+  .scope-toolbar-main {
+    flex: 1 1 auto;
+  }
+
+  .scope-toolbar-controls {
+    width: auto;
+  }
+
+  .status-top-right {
+    width: auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    overflow: visible;
+    padding: 0;
+  }
+
+  .ops-summary-list {
+    grid-template-columns: repeat(30, minmax(0, 1fr));
+  }
+
+  .stat-total,
+  .stat-running,
+  .stat-idle,
+  .stat-aborted,
+  .stat-error {
+    grid-column: span 3;
+  }
+
+  .stat-uptime,
+  .stat-tokens,
+  .stat-cost {
+    grid-column: span 5;
+  }
+
+  .action-bar-inner {
+    grid-template-columns: repeat(30, minmax(0, 1fr));
+  }
+
+  .action-slot,
+  .action-slot--primary,
+  .action-slot--primary-last,
+  .action-slot--secondary-wide,
+  .action-slot--secondary {
+    grid-column: span 5;
+  }
+}
+
+@media (min-width: 1400px) and (max-width: 1799px) {
+  .dashboard {
+    height: 111.112vh;
+    height: 111.112dvh;
+  }
+}
 html.light-theme .token-mini-value-label {
   stroke: #ffffff;
   stroke-width: 4px;

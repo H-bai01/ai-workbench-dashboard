@@ -45,6 +45,43 @@ body {
   color: var(--text-primary) !important;
 }
 
+/*
+ * 高 DPI 桌面会把物理像素压缩成较窄的 CSS 视口。整体缩放 body，保证首页、
+ * 弹窗、抽屉和浮层使用同一视觉比例，而不是只有首页卡片变小。
+ */
+@media (min-width: 920px) and (max-width: 1099px) {
+  body {
+    zoom: 0.9;
+  }
+
+  #app {
+    min-height: 111.112vh;
+    min-height: 111.112dvh;
+  }
+}
+
+@media (min-width: 1100px) and (max-width: 1399px) {
+  body {
+    zoom: 0.8;
+  }
+
+  #app {
+    min-height: 125vh;
+    min-height: 125dvh;
+  }
+}
+
+@media (min-width: 1400px) and (max-width: 1799px) {
+  body {
+    zoom: 0.9;
+  }
+
+  #app {
+    min-height: 111.112vh;
+    min-height: 111.112dvh;
+  }
+}
+
 /* 磨砂玻璃材质：主要容器加背景模糊 */
 .el-card,
 .el-dialog,

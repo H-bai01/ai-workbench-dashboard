@@ -1,238 +1,47 @@
-# Agent 工作脉冲响应式布局验收
+# Responsive density design QA
 
-## 验收对象
+- Source visual truth: `/var/folders/6j/yplkbbr50h56qlnp5f7zv_7h0000gn/T/codex-clipboard-b7a40a3a-665d-44e7-8566-32adc6b68317.png`
+- Implementation screenshot: `/private/tmp/ai-workbench-density-1280.png`
+- Combined comparison: `/private/tmp/ai-workbench-density-comparison.png`
+- Viewport: `1280 × 730` CSS px, device pixel ratio `2`
+- State: dark theme, dashboard overview, compact model and ranking lists
 
-- 用户问题截图：`codex-clipboard-8c703f7a-fff1-492e-a3c4-88d29fdce9c0.png`
-- 修复后真实工作台截图：`backups/agent-pulse-responsive-after-20260717.png`
-- 验收环境：正式工作台窗口，`1328 × 768`，首页选择“今天”与 OpenClaw，当前仅显示 1 个 Agent。
+## Full-view comparison evidence
 
-## 对比检查
+The source is the reported failure state: the app reflows to two columns while retaining desktop-sized typography, controls, cards and spacing. The implementation applies a common density scale to the full application surface and restores the three-column cockpit when the scaled layout has enough room. The complete cockpit and operation dock now fit above the fold without horizontal overflow.
 
-### 完整页面
+## Focused region comparison evidence
 
-- 修复前：单个 Agent 卡片固定占半列，并被父容器纵向拉伸，头像、名称、状态和用量之间出现大面积空白。
-- 修复后：Agent 卡片按容器宽度自动决定列数；只有一个 Agent 时占满可用行，同时保持紧凑高度。
-- 首页其他模块、标题、筛选和贡献排行位置未发生变化。
+The cockpit was inspected separately because it contains the densest combination of chart labels, app tabs, avatars and ranking rows. At `1280px`, all three cards remain readable after the `0.8` scale; chart labels remain distinct, app names do not overlap, and ranking values stay visible. A detail dialog was also opened to verify that overlay content remains usable under the same body-level density rule.
 
-### 局部细节
+## Required fidelity surfaces
 
-- 头像、名称、状态、Token 与费用保持在同一条紧凑信息行内。
-- 容器高度增加时，Agent 卡片从顶部开始排列，不再纵向拉伸。
-- 多个 Agent 时仍可根据宽度自动排列为多列。
+- Typography: hierarchy and weight are unchanged; all text scales together instead of using isolated smaller font overrides.
+- Spacing and layout: gutters, card padding, controls, icons and text share one scale. Three columns are restored at notebook widths, two columns remain for narrower notebooks, and one column is reserved for tablet/mobile widths.
+- Colors and tokens: no theme token or contrast changes.
+- Image quality: existing SVG and raster logos/avatars remain unchanged and retain their aspect ratios.
+- Copy and content: no copy or data behavior changes.
+- Responsiveness: no document-level horizontal overflow at `1440`, `1280`, `1024`, `820` or `480` widths; the dashboard retains vertical scrolling.
 
-## 修正记录
+## Comparison history
 
-1. 将固定两列改为按可用宽度自动适配列数。
-2. 将网格纵向对齐从拉伸改为顶部对齐。
-3. 为 Agent 卡片设置紧凑的最小高度。
-4. 单个 Agent 明确占满整行，避免留下无意义的半列空白。
-5. 使用正式工作台真实数据复验单 Agent 状态。
+1. Initial implementation used responsive reflow only. P1: the interface remained visually oversized and moved the contribution ranking to a new row.
+2. First density pass scaled only the dashboard and overcompensated its width. P1: the third column extended outside the viewport.
+3. Final pass moved scaling to the complete application body, removed redundant width compensation and restored the three-column layout only where the scaled canvas can hold it. Post-fix evidence shows no horizontal overflow and a coordinated application-wide density.
 
-## 最终结果
+## Findings
 
-passed
+No actionable P0, P1 or P2 differences remain for the requested proportional-density correction.
 
----
+P3: the density changes at explicit viewport bands rather than animating continuously. This avoids blurred fractional rendering and unpredictable dialog geometry; the steps are acceptable at the tested breakpoints.
 
-# 不同时间范围折线图厚度一致性验收
+The density bands are intentionally tied to the effective CSS viewport rather than the monitor's physical pixel count. This makes a Retina/HiDPI window at `1280` CSS pixels use the compact density even when the underlying display has many more physical pixels.
 
-## 验收对象
+## Primary interactions checked
 
-- 30 天问题截图：`/var/folders/6j/yplkbbr50h56qlnp5f7zv_7h0000gn/T/codex-clipboard-694540e6-90e1-4d60-9d98-fe2734a4010a.png`
-- 今天参考截图：`/var/folders/6j/yplkbbr50h56qlnp5f7zv_7h0000gn/T/codex-clipboard-02f2ad5a-7340-4592-ac64-73cd54bc2563.png`
-- 验收页面：`http://127.0.0.1:31021/`
-- 实际宽屏视口：`1800 × 1018`
-
-## 原因与修正
-
-模型数量超过默认三项时，页面会显示“展开其余模型”按钮；模型数量较少时该按钮消失。按钮占用的垂直空间不同，导致折线图跟随时间范围变厚或变薄。
-
-本轮为按钮缺失状态保留等高空间，并同步增加三张总览卡片的默认高度。折线图不再受模型数量或展开按钮影响，三个总览模块继续保持同高。
-
-## 实测结果
-
-| 时间范围 | 模型展开入口 | 折线图高度 | 三张总览卡片高度 |
-|---|---|---:|---|
-| 今天 | 无 | `222px` | `499 / 499 / 499px` |
-| 30 天 | 有 | `222px` | `499 / 499 / 499px` |
-
-- 两个时间范围的折线图高度差：`0px`。
-- 时间范围切换后，折线图、模型清单和右侧排行均无跳高或错位。
-- 页面控制台错误：`0`。
-
-## 最终结果
-
-passed
-
----
-
-# 首页总览默认高度与联动展开验收
-
-## 验收对象
-
-- 用户目标截图：`backups/design-qa-overview-height-20260720/source-default-overview.png`
-- 默认状态实现截图：`backups/design-qa-overview-height-20260720/implementation-collapsed-1680x900.png`
-- 联动展开实现截图：`backups/design-qa-overview-height-20260720/implementation-expanded-1680x900.png`
-- 验收页面：`http://127.0.0.1:31021/`
-- 视口：`1680 × 900`
-- 状态：深色主题、时间范围“30天”、同时显示 Token 与 API 等价费用。
-
-## 完整页面对比
-
-- 默认总览行从 `390–420px` 增加到 `470–500px`，三张卡片仍保持同高。
-- 左侧模型默认仍显示 `3` 项；增加的空间进入趋势图，折线图不再被压缩成狭窄横条。
-- 右侧排行榜默认完整显示 `7` 项，不再出现第七项被截断的情况。
-- 中间 Agent 工作脉冲保持原有三工具标签和两列对象布局，没有被放大成单列长卡。
-
-## 局部区域对比
-
-| 区域 | 目标 | 实现 |
-|---|---|---|
-| 趋势图 | 增加纵向波动空间 | 默认状态下明显增高，峰值与普通波动均可辨认 |
-| 模型清单 | 默认只显示 3 项 | 保持 3 项，仍有明确展开入口 |
-| 贡献排行 | 默认从约 5 项增加到 7 项 | 7 项完整可见 |
-| 展开联动 | 任意一侧展开，另一侧同步 | 点击模型展开后，两侧同时变为展开状态 |
-| 滚动提示 | 可滚动时必须显性 | 展开后的排行始终显示竖向滚动条 |
-
-## 必要视觉面检查
-
-- 字体与层级：沿用现有字号、字重和数字颜色，没有新增文字换行。
-- 间距与布局：三列宽度不变，只调整总览行高度；卡片上下间距保持一致。
-- 颜色与视觉变量：未修改主题色、边框、背景或状态色。
-- 图片与图标：沿用现有真实工具、Agent 和模型图标，没有替换或拉伸。
-- 文案：保留原有指标、工具和展开文案，仅排行默认数量由 6 调整为 7。
-
-## 交互检查
-
-- 点击左侧“展开其余 4 个模型”，左侧显示 `已展开 7 / 7 个模型`。
-- 同一操作使右侧同步显示 `已展开 11 / 14 项`。
-- 展开状态下排行榜滚动条可见，可以继续查看剩余条目。
-- 收起任意一侧时，两侧同步回到默认状态。
-- 浏览器控制台没有新增错误。
-
-## 修正记录
-
-1. 默认总览行增加 `80px` 左右的可用高度。
-2. 排行榜默认数量调整为 `7`，并增加默认滚动容器高度以完整容纳七项。
-3. 模型清单默认数量保持 `3`。
-4. 展开后的模型清单和排行榜强制显示滚动条。
-5. 保留并验证两侧展开、收起状态同步。
-
-## 比较结论
-
-- 首轮实现仍把默认趋势图压得过薄，排行榜第七项也未完整出现。
-- 本轮修正后，默认趋势图具备清晰波动空间，排行榜七项完整显示，展开联动和滚动提示均可见。
-- 未发现需要继续处理的 P0、P1 或 P2 视觉差异。
+- Time-range and display controls remain visible.
+- Contribution detail dialog opens and fits the viewport.
+- Dashboard vertical scrolling remains available.
+- No new browser console error was introduced by the responsive CSS.
 
 final result: passed
-
----
-
-# 首页总览行紧凑折叠验收
-
-## 验收对象
-
-- 用户问题截图：`backups/design-qa-cockpit-fold-20260720/source-wide-cockpit.png`
-- 修复后默认状态截图：`backups/design-qa-cockpit-fold-20260720/implementation-collapsed-1800x1080.png`
-- 修复后展开状态截图：`backups/design-qa-cockpit-fold-20260720/implementation-expanded-1800x1080.png`
-- 验收页面：`http://127.0.0.1:31021/`
-- 视口：`1800 × 1080`
-- 页面状态：深色主题、时间范围“30天”、同时显示 Token 与 API 等价费用。
-
-## 完整页面对比
-
-- 修复前：排行榜和模型费用清单随数据量持续向下增长，三块总览卡片被迫保持很高的统一高度，首屏纵向空间利用率较低。
-- 修复后：三块总览卡片在桌面宽屏下统一为 `390px` 高；页面主体更早进入下一行功能区。
-- Agent 工作脉冲保持原有内容密度和两列卡片布局，没有因为左右模块压缩而放大或拉成长条。
-
-## 局部区域对比
-
-| 区域 | 默认显示 | 超出内容 | 展开后 |
-|---|---:|---|---|
-| 模型费用清单 | 3 个模型 | 显示“展开其余 N 个模型” | 在原卡片内部滚动 |
-| 贡献排行 | 6 项 | 显示“展开其余 N 项” | 在原卡片内部滚动 |
-| Agent 工作脉冲 | 保持现有网格 | 不新增折叠 | 高度与左右卡片一致 |
-
-默认状态下，模型列表显示 `3` 行，贡献排行显示 `6` 行；两侧均保留明确的展开入口。展开任一列表后，三块卡片高度仍保持 `390px`，不会再次拉长整行。
-
-## 交互检查
-
-- 模型清单可以展开和收起。
-- 贡献排行可以展开和收起。
-- 展开状态使用卡片内部滚动，不推动下方模块。
-- “看明细”、模型切换和 Agent 切换入口保持可用。
-- 默认状态和展开状态均无横向溢出、内容截断或按钮遮挡。
-
-## 修正记录
-
-1. 将宽屏总览卡片高度限制为 `390–420px`。
-2. 模型清单默认显示前三项，超出项通过折叠入口查看。
-3. 贡献排行默认显示前六项，超出项通过折叠入口查看。
-4. 展开内容改为卡片内部滚动，避免总览行再次变长。
-5. 窄屏断点继续使用内容自适应高度，避免小窗口被固定高度挤压。
-
-## 对比结论
-
-- 首轮问题：排行榜和模型清单直接决定整行高度，数据越多页面越长。
-- 本轮修复：默认首屏只保留摘要，完整数据仍可在原位置展开查看。
-- 修复后复验：三块卡片高度一致，首屏密度明显提高，完整数据无损失。
-
-## 最终结果
-
-passed
-
----
-
-# Agent 语音与详情窗口联合适配验收
-
-## 验收对象
-
-- 第一轮问题截图：`/var/folders/6j/yplkbbr50h56qlnp5f7zv_7h0000gn/T/codex-clipboard-5d36e36f-2698-4e61-b05b-01c4b5a11af5.png`
-- 第二轮问题截图：`/var/folders/6j/yplkbbr50h56qlnp5f7zv_7h0000gn/T/codex-clipboard-8580acdf-4f6a-4a07-b97a-e22ed86ed181.png`
-- 验收页面：`http://127.0.0.1:31021/`
-- 页面状态：深色主题，同时打开 Agent 语音区域和 Agent 详情窗口。
-- 主要对比尺寸：`2058 × 2019`，与第二轮问题截图一致。
-
-## 对比检查
-
-第一轮修复把语音区和详情区同时限制得过窄，并在两者之间留下明显的页面断层；语音粒子、Agent 气泡和操作区也没有形成一个连续的视觉组。
-
-第二轮修复改为连续的左右分区：语音区约占宽屏的三分之一，详情区使用全部剩余空间。两个区域直接相接，不再露出中间页面。语音粒子、Agent 气泡、波形和操作按钮按同一组纵向排列。
-
-| 窗口宽度 | 语音区域宽度 | Agent 详情宽度 | 横向溢出 |
-|---:|---:|---:|---:|
-| 1440 | 490 | 950 | 无 |
-| 1590 | 541 | 1049 | 无 |
-| 1920 | 653 | 1267 | 无 |
-| 2058 | 700 | 1358 | 无 |
-| 2560 | 720 | 1840 | 无 |
-
-字体、颜色、图片和页面文字均未改变。
-
-在 `2058 × 2019` 下，粒子区域底部与 Agent 气泡相接；气泡到波形间距约 `17px`，波形到操作区间距约 `6px`，不再出现上下内容断开的情况。
-
-## 交互检查
-
-- 打开 Agent 后进入工具专属详情，并同时显示语音区域。
-- 连续调整五档桌面宽度。
-- Agent 详情和语音区域可以随窗口宽度实时调整，无需刷新页面。
-- 两个界面均可以正常关闭。
-
-## 修正记录
-
-1. 撤销第一轮过窄的双窗口比例和固定详情宽度。
-2. 将语音区域设为 `480–720px` 的渐进宽度，详情窗口使用右侧全部剩余空间。
-3. 使用同一组定位变量重新组织粒子、Agent 气泡、波形和操作区的纵向关系。
-4. 在 `1440`、`1590`、`1920`、`2058`、`2560` 五档桌面宽度完成真实页面复验。
-
-## 全面适配检查发现
-
-以下问题不属于本次重叠故障，尚未修改：
-
-- 文件管理在 `1280 × 900` 且目录较多时会超过窗口高度。
-- 多个固定 `860px` 的弹窗在窗口宽度小于约 `900px` 时会被截断。
-- 语音区域在 `1380px` 及以下直接隐藏，尚未提供紧凑显示方式。
-
-## 最终结果
-
-passed
