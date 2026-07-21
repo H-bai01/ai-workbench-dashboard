@@ -2,7 +2,7 @@
 
 一个面向本机 AI 工具的统一监控与管理台。把 OpenClaw、Codex、Claude Code 等工具放进同一个界面，集中查看运行状态、Token 与 API 等价费用、项目与会话、工具调用、工作目录、自动任务和版本更新。
 
-当前本地正式版本：`v2.12.2`。
+当前本地正式版本：`v2.12.3`。
 
 [![npm version](https://img.shields.io/npm/v/ai-workbench-dashboard.svg)](https://www.npmjs.com/package/ai-workbench-dashboard)
 [![GitHub release](https://img.shields.io/github/v/release/H-bai01/ai-workbench-dashboard)](https://github.com/H-bai01/ai-workbench-dashboard/releases)
