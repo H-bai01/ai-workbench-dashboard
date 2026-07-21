@@ -18,10 +18,12 @@ test('监控对象统一进入通用详情并保留工具专属入口', () => {
 
 test('活动时间线读取全部受支持来源的只读会话索引', () => {
   const service = read('scripts/unified-service.js')
+  const sessionRoutes = read('scripts/routes/session-observation-routes.mjs')
   const timeline = read('src/components/UnifiedActivityTimeline.vue')
   const api = read('src/api/session-observation.ts')
-  assert.match(service, /pathname === '\/api\/session-observation\/index'/)
-  assert.match(service, /SESSION_OBSERVATION_STORE\.indexSnapshot/)
+  assert.match(service, /handleSessionObservationRoute/)
+  assert.match(sessionRoutes, /pathname === '\/api\/session-observation\/index'/)
+  assert.match(sessionRoutes, /store\.indexSnapshot/)
   assert.match(api, /fetchObservedSessionIndex/)
   assert.match(timeline, /AI 工具活动时间线/)
   assert.match(timeline, /fetchObservedSessionIndex\(\)/)

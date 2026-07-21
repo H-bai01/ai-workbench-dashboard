@@ -40,10 +40,6 @@ import { collectSensitiveValues, createReadOnlyDoctorSandbox, doctorCommand, red
 import { sealedFeatureForPath, sealedFeaturePayload } from './security/sealed-features.mjs'
 import {
   discoverAuthorizedProjectRoots,
-  findAuthorizedProject,
-  resolveAuthorizedProject,
-  resolveAuthorizedProjectOutput,
-  resolveProjectDisplayNamesFile,
 } from './security/project-paths.mjs'
 import { decodeAndValidateRasterImage, validateRasterImageBuffer } from './security/raster-image.mjs'
 import { installBrowserOutputRedaction, normalizeKnownSecrets } from './security/output-redaction.mjs'
@@ -82,6 +78,8 @@ import {
   readCodexProcesses,
 } from './local-ai-status.mjs'
 import { createSessionObservationStore } from './session-observation.mjs'
+import { handleSessionObservationRoute } from './routes/session-observation-routes.mjs'
+import { handleProjectRoute } from './routes/project-routes.mjs'
 import { GPT56_BILLING_MODELS, mergeBillingConfigWithDefaults, mergePriceStatus } from './billing-config.mjs'
 import { installPrivacyConsole, installProcessErrorPrivacy } from '../src/utils/log-privacy.mjs'
 import { createOpenClawUpdateStatus } from '../src/utils/openclaw-version.mjs'
@@ -678,10 +676,6 @@ function getOpenClawProjectRoots() {
     workspaces: getConfiguredOpenClawAgents().map(agent => agent.workspace).filter(Boolean),
     legacyRoot: path.join(HOME_DIR, 'clawd'),
   })
-}
-
-function findOpenClawProject(projectId) {
-  return findAuthorizedProject(getOpenClawProjectRoots(), projectId)
 }
 
 const QUICK_MESSAGE_DEFAULT_TEMPLATES = [
@@ -7058,99 +7052,19 @@ export const server = http.createServer(async (req, res) => {
 
   const readObservationBillingConfig = readEffectiveBillingConfig
 
-  // ============================================
-  // 阶段 3A：统一只读会话执行详情
-  // 仅接受来源、Agent ID、会话 ID 和分页参数；不接受文件路径。
-  // ============================================
-  if (pathname === '/api/session-observation/capabilities' && req.method === 'GET') {
-    sendJson(res, 200, { capabilities: SESSION_OBSERVATION_STORE.capabilities(), readOnly: true })
-    return
-  }
-
-  if (pathname === '/api/session-observation/index' && req.method === 'GET') {
-    try {
-      const allowedQueryKeys = new Set(['source'])
-      if ([...url.searchParams.keys()].some(key => !allowedQueryKeys.has(key))) throw new Error('请求包含不支持的查询参数')
-      const source = String(url.searchParams.get('source') || '').trim()
-      const sessions = SESSION_OBSERVATION_STORE.indexSnapshot(browserOutputSecrets())
-        .filter(session => !source || session.source === source)
-        .sort((a, b) => b.lastActivityMs - a.lastActivityMs)
-      sendJson(res, 200, {
-        sessions,
-        sources: [...new Set(sessions.map(session => session.source))],
-        readOnly: true,
-      })
-    } catch (error) {
-      sendJson(res, 400, { error: error.message, sessions: [], readOnly: true })
-    }
-    return
-  }
-
-  if (pathname === '/api/session-observation/sessions' && req.method === 'GET') {
-    try {
-      const allowedQueryKeys = new Set(['source', 'agentId', 'sessionId', 'sessionIds'])
-      if ([...url.searchParams.keys()].some(key => !allowedQueryKeys.has(key))) throw new Error('请求包含不支持的查询参数')
-      const source = String(url.searchParams.get('source') || '')
-      const agentId = String(url.searchParams.get('agentId') || '')
-      const sessionIds = [
-        ...url.searchParams.getAll('sessionId'),
-        ...String(url.searchParams.get('sessionIds') || '').split(','),
-      ].map(value => value.trim()).filter(Boolean)
-      const result = await SESSION_OBSERVATION_STORE.listSessions({
-        source,
-        agentId,
-        sessionIds,
-        secrets: browserOutputSecrets(),
-      })
-      const billingConfig = readObservationBillingConfig()
-      sendJson(res, 200, {
-        ...result,
-        sessions: result.sessions.map(session => ({
-          ...session,
-          ...enrichObservationUsage(session, billingConfig, session.lastActivityMs),
-        })),
-        readOnly: true,
-      })
-    } catch (error) {
-      sendJson(res, 400, { error: error.message, sessions: [], readOnly: true })
-    }
-    return
-  }
-
-  if (pathname === '/api/session-observation/events' && req.method === 'GET') {
-    try {
-      const allowedQueryKeys = new Set(['source', 'sessionId', 'cursor', 'limit', 'type', 'types', 'errorsOnly'])
-      if ([...url.searchParams.keys()].some(key => !allowedQueryKeys.has(key))) throw new Error('请求包含不支持的查询参数')
-      const source = String(url.searchParams.get('source') || '')
-      const sessionId = String(url.searchParams.get('sessionId') || '')
-      const rawCursor = String(url.searchParams.get('cursor') || '')
-      const limit = Number(url.searchParams.get('limit') || 30)
-      const rawErrorsOnly = String(url.searchParams.get('errorsOnly') || '')
-      if (rawErrorsOnly && !['0', '1'].includes(rawErrorsOnly)) throw new Error('错误筛选参数无效')
-      const types = [
-        ...url.searchParams.getAll('type'),
-        ...String(url.searchParams.get('types') || '').split(','),
-      ].map(value => value.trim()).filter(Boolean)
-      const result = await SESSION_OBSERVATION_STORE.readEvents({
-        source,
-        sessionId,
-        cursor: rawCursor || undefined,
-        limit,
-        types,
-        errorsOnly: rawErrorsOnly === '1',
-        secrets: browserOutputSecrets(),
-      })
-      const billingConfig = readObservationBillingConfig()
-      sendJson(res, 200, {
-        ...result,
-        events: result.events.map(event => enrichObservationEvent(event, billingConfig)),
-        readOnly: true,
-      })
-    } catch (error) {
-      sendJson(res, 400, { error: error.message, events: [], readOnly: true })
-    }
-    return
-  }
+  // 阶段 3A：统一只读会话执行详情。路由仅负责 HTTP 输入输出，索引与解析仍由会话存储层完成。
+  if (await handleSessionObservationRoute({
+    req,
+    res,
+    url,
+    pathname,
+    store: SESSION_OBSERVATION_STORE,
+    getSecrets: browserOutputSecrets,
+    readBillingConfig: readObservationBillingConfig,
+    enrichUsage: enrichObservationUsage,
+    enrichEvent: enrichObservationEvent,
+    sendJson,
+  })) return
 
   if (pathname === '/api/billing-config' && req.method === 'GET') {
     try {
@@ -8028,129 +7942,15 @@ export const server = http.createServer(async (req, res) => {
   // Sprint 2: 项目看板 API
   // ============================================
 
-  // GET /api/projects/list — 扫描当前环境可用的 OpenClaw 项目目录
-  if (pathname === '/api/projects/list' && req.method === 'GET') {
-    try {
-      const projects = []
-      const projectRoots = getOpenClawProjectRoots()
-      for (const projectRoot of projectRoots) {
-        let displayNames = createKeyedDictionary()
-        try {
-          const namesFile = resolveProjectDisplayNamesFile(projectRoot, { mustExist: true })
-          displayNames = keyedDictionaryFrom(JSON.parse(fsSync.readFileSync(namesFile, 'utf8')))
-        } catch { /* 无安全映射文件 */ }
-        const entries = fsSync.readdirSync(projectRoot.projectsDir, { withFileTypes: true })
-        for (const entry of entries) {
-          if (!entry.isDirectory()) continue
-          try {
-            const project = resolveAuthorizedProject(projectRoot, entry.name)
-            const raw = fsSync.readFileSync(project.stateFile, 'utf8')
-            const state = JSON.parse(raw)
-            const stat = fsSync.statSync(project.stateFile)
-            projects.push({
-              id: entry.name,
-              name: state.name || state.project_name || entry.name,
-              displayName: (typeof displayNames[entry.name] === 'string' ? displayNames[entry.name] : displayNames[entry.name]?.displayName) || '',
-              initiator: (typeof displayNames[entry.name] === 'object' ? displayNames[entry.name]?.initiator : '') || state.initiator || state.created_by || '',
-              phase: state.phase || 'unknown',
-              responsible_agent: state.responsible_agent || state.agent || null,
-              blocked_reason: state.blocked_reason || null,
-              retry_count: state.retry_count || 0,
-              updated_at: state.updated_at || null,
-              created_at: state.created_at || null,
-              file_mtime: stat.mtimeMs,
-              project_root: displayUserPath(project.projectDir),
-              raw: state,
-            })
-          } catch { /* 跳过无法解析的 */ }
-        }
-      }
-      res.writeHead(200, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ projects, total: projects.length, projectDirs: projectRoots.map(root => displayUserPath(root.projectsDir)), checkedAt: Date.now() }))
-    } catch (e) {
-      res.writeHead(500, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ error: e.message, projects: [] }))
-    }
-    return
-  }
-
-  // GET /api/projects/file?id=xxx&key=pm_plan — 读取项目产出文件内容(限定项目目录内)
-  if (pathname === '/api/projects/file' && req.method === 'GET') {
-    try {
-      const id = String(url.searchParams.get('id') || '')
-      const fileKey = String(url.searchParams.get('key') || '')
-      if (!/^[A-Za-z0-9_-]{1,128}$/.test(id) || !/^[A-Za-z0-9_-]{1,128}$/.test(fileKey)) {
-        res.writeHead(400, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ error: 'invalid id/key' }))
-        return
-      }
-      const project = findOpenClawProject(id)
-      if (!project) throw new Error('project directory not found')
-      const state = JSON.parse(fsSync.readFileSync(project.stateFile, 'utf8'))
-      const fname = String((state.files || {})[fileKey] || `${fileKey}.md`)
-      const fpath = resolveAuthorizedProjectOutput(project, fname)
-      const content = fsSync.readFileSync(fpath, 'utf8')
-      res.writeHead(200, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ content, filename: fname, mtime: fsSync.statSync(fpath).mtimeMs }))
-    } catch (e) {
-      res.writeHead(404, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ error: `文件不存在或无法读取: ${e.message}` }))
-    }
-    return
-  }
-
-  // POST /api/projects/rename — 设置项目中文显示名(存 display-names.json,不动 state.json)
-  if (pathname === '/api/projects/rename' && req.method === 'POST') {
-    let body = ''
-    req.on('data', d => { body += d })
-    req.on('end', () => {
-      try {
-        const { id, displayName, initiator } = JSON.parse(body || '{}')
-        if (!/^[A-Za-z0-9_-]{1,128}$/.test(String(id || ''))) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'invalid id' })); return }
-        const project = findOpenClawProject(id)
-        if (!project) throw new Error('未找到安全的 OpenClaw 项目目录')
-        const mapFile = resolveProjectDisplayNamesFile(project)
-        let names = createKeyedDictionary()
-        try { names = keyedDictionaryFrom(JSON.parse(fsSync.readFileSync(mapFile, 'utf8'))) } catch { /* 首次 */ }
-        // 旧格式(纯字符串)自动升级为对象
-        const previousValue = Object.hasOwn(names, id) ? names[id] : undefined
-        const prev = typeof previousValue === 'string' ? { displayName: previousValue } : (previousValue || {})
-        const entry = { ...prev }
-        if (displayName !== undefined) entry.displayName = String(displayName || '').trim()
-        if (initiator !== undefined) entry.initiator = String(initiator || '').trim()
-        if (!entry.displayName && !entry.initiator) delete names[id]
-        else names[id] = entry
-        safeAtomicWriteFileWithinRoots(mapFile, JSON.stringify(names, null, 2), [project.authorizationRoot])
-        res.writeHead(200, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ ok: true, displayName: entry.displayName || '', initiator: entry.initiator || '' }))
-      } catch (e) {
-        res.writeHead(500, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ error: e.message }))
-      }
-    })
-    return
-  }
-
-  // GET /api/projects/state?id=xxx — 返回单个项目 state.json 全文
-  if (pathname === '/api/projects/state' && req.method === 'GET') {
-    try {
-      const id = new URL(req.url, 'http://localhost').searchParams.get('id')
-      if (!id || !/^[a-zA-Z0-9_\-]+$/.test(id)) {
-        res.writeHead(400, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ error: 'Invalid id' }))
-        return
-      }
-      const project = findOpenClawProject(id)
-      if (!project) throw new Error('project directory not found')
-      const raw = fsSync.readFileSync(project.stateFile, 'utf8')
-      res.writeHead(200, { 'Content-Type': 'application/json' })
-      res.end(raw)
-    } catch (e) {
-      res.writeHead(404, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ error: e.message }))
-    }
-    return
-  }
+  if (await handleProjectRoute({
+    req,
+    res,
+    url,
+    pathname,
+    getProjectRoots: getOpenClawProjectRoots,
+    displayPath: displayUserPath,
+    sendJson,
+  })) return
 
   // ============================================
   // Sprint 3: Cron 任务中心 API
