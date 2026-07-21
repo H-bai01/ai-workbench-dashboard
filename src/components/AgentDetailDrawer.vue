@@ -633,6 +633,21 @@ import { setDefaultAvatar } from '../utils/avatarFallback'
 import { buildAgentPresentationOptions, normalizeAgentAvatarSource } from '../utils/agent-presentation.mjs'
 import { createSafeRecord, ownValue } from '../utils/safe-record.mjs'
 import { clampPercentage, modelTokenPercentages } from '../utils/percentage.mjs'
+import {
+  modelCompanyName as formatModelCompanyName,
+  modelDisplayName as formatModelDisplayName,
+  modelLogoKey,
+  modelLogoSrc,
+  modelLogoText,
+} from '../utils/model-presentation'
+import {
+  cleanAgentContent as cleanContent,
+  cleanUserContent,
+  displayCronMessage,
+  localizeAgentMessage,
+  localizeUserVisibleMessage,
+  stripInlineSystemNotice,
+} from '../utils/agent-message-display'
 import { ElMessage, ElMessageBox, ElImageViewer, ElNotification } from 'element-plus'
 import { getSkills, toggleSkill } from '../api/system'
 import {
@@ -1288,48 +1303,12 @@ const MODEL_COLORS: Record<string, string> = {
   'claude-opus-4': '#ff9f0a',
   'gpt-4o': '#5e5ce6',
 }
-const MODEL_DISPLAY: Record<string, string> = {
-  'deepseek-v4-flash': 'DeepSeek V4 Flash',
-  'deepseek-v4-pro': 'DeepSeek V4 Pro',
-  'deepseek-v3': 'DeepSeek V3',
-  'deepseek-chat': 'DeepSeek Chat',
-  'deepseek-reasoner': 'DeepSeek Reasoner',
-  'MiniMax-M2.7': 'MiniMax M2.7',
-  'claude-fable-5': 'Claude Fable 5',
-  'claude-opus-4-8': 'Claude Opus 4.8',
-  'claude-sonnet-5': 'Claude Sonnet 5',
-  'claude-haiku-4-5': 'Claude Haiku 4.5',
-  'claude-sonnet-4-6': 'Claude Sonnet 4.6',
-  'claude-sonnet-4-5': 'Claude Sonnet 4.5',
-  'claude-opus-4': 'Claude Opus 4',
-  'claude-opus-4-6': 'Claude Opus 4.6',
-  'claude-opus-4-7': 'Claude Opus 4.7',
-  'claude-opus-4-5': 'Claude Opus 4.5',
-  'chat-latest': 'ChatGPT Latest',
-  'gpt-5.3-codex': 'GPT-5.3 Codex',
-  'gpt-5.4': 'GPT-5.4',
-  'gpt-5.4-mini': 'GPT-5.4 Mini',
-  'gpt-5.4-nano': 'GPT-5.4 Nano',
-  'gpt-5.4-pro': 'GPT-5.4 Pro',
-  'gpt-5.5': 'GPT-5.5',
-  'gpt-5.5-pro': 'GPT-5.5 Pro',
-  'gpt-5.6-sol': 'GPT-5.6 Sol',
-  'gpt-5.6-terra': 'GPT-5.6 Terra',
-  'gpt-5.6-luna': 'GPT-5.6 Luna',
-  'gpt-4o': 'GPT-4o',
-  'gpt-4o-mini': 'GPT-4o Mini',
-  'Qwen3.5-4B-OptiQ-4bit': '本地千问 Qwen3.5 4B',
-  'qwen3.5': '本地千问 Qwen3.5',
-  'qwen3.5:9b': '本地千问 Qwen3.5 9B',
-  'qwen2.5': '本地千问 Qwen2.5',
-  'gemma3:12b': '本地 Google Gemma 3 12B',
+function modelDisplayName(model: string): string {
+  return formatModelDisplayName(model, 'detailed')
 }
 
-function modelDisplayName(model: string): string {
-  const lower = String(model || '').toLowerCase()
-  if (lower.includes('qwen')) return ownValue(MODEL_DISPLAY, model) || `本地千问 ${model.replace(/^.*qwen/i, 'Qwen')}`
-  if (lower.includes('gemma')) return ownValue(MODEL_DISPLAY, model) || `本地 Google ${model.replace(/^.*gemma/i, 'Gemma')}`
-  return ownValue(MODEL_DISPLAY, model) || model
+function modelCompanyName(model: string): string {
+  return formatModelCompanyName(model, 'detailed')
 }
 
 const FALLBACK_COLORS = ['#bf5af2', '#ff375f', '#06b6d4', '#84cc16']
@@ -1340,50 +1319,6 @@ function modelColor(m: string): string {
   if (configured) return configured
   if (!Object.hasOwn(dynamicColors, m)) { dynamicColors[m] = FALLBACK_COLORS[colorIdx++ % FALLBACK_COLORS.length] }
   return dynamicColors[m]
-}
-
-function modelLogoKey(model: string): string {
-  const m = String(model || '').toLowerCase()
-  if (m.includes('deepseek')) return 'deepseek'
-  if (m.includes('minimax')) return 'minimax'
-  if (m.includes('claude') || m.includes('anthropic')) return 'anthropic'
-  if (m.includes('gpt') || m.includes('openai')) return 'openai'
-  if (m.includes('qwen')) return 'qwen'
-  if (m.includes('gemma') || m.includes('google')) return 'google'
-  if (m.includes('ollama') || m.includes('local') || m.includes('本地')) return 'local'
-  return 'generic'
-}
-
-function modelLogoText(model: string): string {
-  const key = modelLogoKey(model)
-  if (key === 'deepseek') return 'DS'
-  if (key === 'minimax') return 'MM'
-  if (key === 'anthropic') return 'A'
-  if (key === 'openai') return 'AI'
-  if (key === 'qwen') return '千'
-  if (key === 'google') return 'G'
-  if (key === 'local') return '本'
-  return 'M'
-}
-
-function modelLogoSrc(model: string): string {
-  const key = modelLogoKey(model)
-  if (['deepseek', 'minimax', 'anthropic', 'openai', 'qwen', 'google'].includes(key)) {
-    return `/model-logos/${key}.svg`
-  }
-  return ''
-}
-
-function modelCompanyName(model: string): string {
-  const key = modelLogoKey(model)
-  if (key === 'deepseek') return 'DeepSeek'
-  if (key === 'minimax') return 'MiniMax'
-  if (key === 'anthropic') return 'Anthropic / Claude'
-  if (key === 'openai') return 'OpenAI'
-  if (key === 'qwen') return 'Alibaba Qwen'
-  if (key === 'google') return 'Google'
-  if (key === 'local') return '本地模型'
-  return modelDisplayName(model)
 }
 
 const drawerAgentId = computed(() => {
@@ -1866,36 +1801,6 @@ function formatTime(dateStr: string | number): string {
   })
 }
 
-function cleanContent(raw: string): string {
-  if (!raw) return ''
-  let text = raw
-  // 1. 移除 thinking 标签及内容（兼容属性、可选空白）
-  text = text.replace(/<\s*thinking[^>]*>[\s\S]*?<\/\s*thinking\s*>/gi, '')
-  // 2. 移除 antThinking 标签及内容（兼容属性、可选空白）
-  text = text.replace(/<\s*antThinking[^>]*>[\s\S]*?<\/\s*antThinking\s*>/gi, '')
-  // 3. 移除 toolCall 标签及内容（XML 风格，兼容属性）
-  text = text.replace(/<\s*toolCall[^>]*>[\s\S]*?<\/\s*toolCall\s*>/gi, '')
-  // 4. 移除 toolCall 自闭合处理指令 <?toolCall ... ?>
-  text = text.replace(/<\?\s*toolCall[\s\S]*?\?>/gi, '')
-  // 5. 合并过多空行（保留一个空行作为段落分隔），防止相邻行意外形成表格
-  text = text.replace(/\n{3,}/g, '\n\n').trim()
-  return text
-}
-
-function cleanUserContent(raw: string): string {
-  if (!raw) return ''
-  let text = raw.trim()
-  text = text.replace(/^\[cron:[^\]\s]+(?:\s+([^\]]+))?\]\s*/i, (_m, title) => {
-    const name = String(title || '').trim()
-    return name ? `定时任务「${name}」触发：\n` : '定时任务触发：\n'
-  }).trim()
-  text = text.replace(/^\[message_id:\s*[^\]]+\]\s*/i, '').trim()
-  text = text.replace(/^\[[a-z_]+:[^\]]+\]\s*/i, '').trim()
-  text = text.replace(/^(?:ou|oc|on|open|user|chat)_[A-Za-z0-9_-]{10,}:\s*/i, '').trim()
-  text = text.replace(/^miadn:\s*/i, '').trim()
-  return text
-}
-
 function displayMessageContent(msg: MessageItem): string {
   const base = msg.role === 'user' ? cleanUserContent(msg.content) : cleanContent(msg.content)
   const cleaned = stripInlineSystemNotice(base).content.trim()
@@ -1904,135 +1809,6 @@ function displayMessageContent(msg: MessageItem): string {
   if (!cleaned && msg.systemNotice) return '已隐藏一段系统提示。'
   if (msg.role === 'user') return localizeUserVisibleMessage(cleaned)
   return localizeAgentMessage(cleaned)
-}
-
-function displayCronMessage(raw: string): string {
-  return localizeAgentMessage(cleanUserContent(raw || ''))
-}
-
-function stripInlineSystemNotice(raw: string): { content: string; notice: string } {
-  if (!raw) return { content: '', notice: '' }
-  const notices: string[] = []
-  let content = raw
-  content = content.replace(/\[System:[\s\S]*?\]/g, (m) => {
-    notices.push(m.replace(/^\[System:\s*/i, '').replace(/\]$/g, '').trim())
-    return ''
-  })
-  content = content.replace(/<system[\s\S]*?<\/system>/gi, (m) => {
-    notices.push(m.replace(/<\/?system[^>]*>/gi, '').trim())
-    return ''
-  })
-  return {
-    content: content.replace(/\n{3,}/g, '\n\n').trim(),
-    notice: notices.filter(Boolean).join('\n\n'),
-  }
-}
-
-function localizeUserVisibleMessage(raw: string): string {
-  if (!raw) return ''
-  let text = raw
-  text = text.replace(/Current time:\s*([^\n]+)/gi, (_m, value) => `当前时间：${translateTimeLine(String(value))}`)
-  text = text.replace(/Reference UTC:\s*([^\n]+)/gi, (_m, value) => `UTC 参考时间：${String(value).trim()}`)
-  text = text.replace(/If you do not send directly, your final plain-text reply will be delivered automatically\./gi, '如果你不直接发送，最终纯文本回复会自动送达。')
-  return text.replace(/\n{3,}/g, '\n\n').trim()
-}
-
-function localizeAgentMessage(raw: string): string {
-  if (!raw) return ''
-  let text = raw
-
-  text = text.replace(/^\[message_id:\s*[^\]]+\]\s*/gim, '')
-  text = text.replace(/^\[cron:([^\]\s]+)(?:\s+([^\]]+))?\]\s*/gim, (_m, _id, title) => {
-    const name = String(title || '').trim()
-    return name ? `定时任务「${name}」触发：\n` : '定时任务触发：\n'
-  })
-  text = text.replace(/^\[[a-z_]+:[^\]]+\]\s*/gim, '')
-  text = text.replace(/\[message_id:\s*[^\]]+\]\s*/gi, '')
-  text = text.replace(/\[cron:[^\]\s]+(?:\s+([^\]]+))?\]\s*/gi, (_m, title) => {
-    const name = String(title || '').trim()
-    return name ? `定时任务「${name}」触发：` : '定时任务触发：'
-  })
-  text = text.replace(/\b(?:ou|oc|on|open|user|chat)_[A-Za-z0-9_-]{12,}:\s*/gi, '')
-
-  text = text.replace(
-    /Current time:\s*([^\n]+)/gi,
-    (_m, value) => `当前时间：${translateTimeLine(String(value))}`
-  )
-  text = text.replace(
-    /Reference UTC:\s*([^\n]+)/gi,
-    (_m, value) => `UTC 参考时间：${String(value).trim()}`
-  )
-
-  const replacements: Array<[RegExp, string]> = [
-    [/Use the message tool if you need to notify the user directly for the current chat\./gi, '如果需要直接通知当前会话里的用户，请使用消息工具'],
-    [/If you do not send directly, your final plain-text reply will be delivered automatically\./gi, '如果你不直接发送，最终纯文本回复会自动送达'],
-    [/You are ChatGPT, a large language model trained by OpenAI\./gi, '你是 ChatGPT，一个由 OpenAI 训练的大语言模型'],
-    [/The user is in an estimated location of\s*/gi, '用户的大致位置：'],
-    [/The current date is\s*/gi, '当前日期：'],
-    [/Any dates before this are in the past, and any dates after this are in the future\./gi, '早于该日期的是过去时间，晚于该日期的是未来时间'],
-    [/When dealing with modern entities\/companies\/people/gi, '涉及现代实体、公司或人物时'],
-    [/you MUST carefully confirm/gi, '必须仔细确认'],
-    [/You are Codex, a coding agent based on GPT-5\./gi, '你是 Codex，一个基于 GPT-5 的编程 Agent'],
-    [/You and the user share one workspace/gi, '你和用户共享同一个工作区'],
-    [/Your job is to collaborate with them until their goal is genuinely handled\./gi, '你的任务是和用户协作，直到目标被真正处理好'],
-    [/Do not send directly/gi, '不要直接发送'],
-    [/plain-text reply/gi, '纯文本回复'],
-    [/automatically/gi, '自动'],
-    [/Knowledge cutoff:\s*/gi, '知识截止时间：'],
-    [/Today's date:\s*/gi, '今天日期：'],
-    [/Current date:\s*/gi, '当前日期：'],
-    [/Current session/gi, '当前会话'],
-    [/Created at/gi, '创建时间'],
-    [/Last active/gi, '最后活跃'],
-    [/Runtime/gi, '运行时长'],
-    [/Used Tokens/gi, '已用 Token'],
-    [/Context limit/gi, '上下文上限'],
-    [/Usage rate/gi, '使用率'],
-    [/System message/gi, '系统消息'],
-    [/Developer message/gi, '开发者消息'],
-    [/User message/gi, '用户消息'],
-    [/Assistant message/gi, 'Agent 回复'],
-    [/Tool call/gi, '工具调用'],
-    [/Tool result/gi, '工具结果'],
-    [/Final answer/gi, '最终回复'],
-  ]
-  for (const [pattern, replacement] of replacements) {
-    text = text.replace(pattern, replacement)
-  }
-
-  return text.replace(/\n{3,}/g, '\n\n').trim()
-}
-
-function translateTimeLine(value: string): string {
-  const dayMap: Record<string, string> = {
-    Sunday: '周日',
-    Monday: '周一',
-    Tuesday: '周二',
-    Wednesday: '周三',
-    Thursday: '周四',
-    Friday: '周五',
-    Saturday: '周六',
-  }
-  const monthMap: Record<string, string> = {
-    January: '1月',
-    February: '2月',
-    March: '3月',
-    April: '4月',
-    May: '5月',
-    June: '6月',
-    July: '7月',
-    August: '8月',
-    September: '9月',
-    October: '10月',
-    November: '11月',
-    December: '12月',
-  }
-  let line = value.trim()
-  for (const [en, zh] of Object.entries(dayMap)) line = line.replace(new RegExp(`\\b${en}\\b`, 'g'), zh)
-  for (const [en, zh] of Object.entries(monthMap)) line = line.replace(new RegExp(`\\b${en}\\b`, 'g'), zh)
-  line = line.replace(/(\d+)(st|nd|rd|th)\b/gi, '$1日')
-  line = line.replace(/\bAM\b/g, '上午').replace(/\bPM\b/g, '下午')
-  return line
 }
 
 // Configure marked with highlight.js for code syntax highlighting

@@ -1199,6 +1199,13 @@ import { createProjectTokenScope, normalizeProjectPath, projectFolderName } from
 import { createUsageStatisticsManager } from '../utils/usage-statistics-manager.mjs'
 import { createSerialPoller } from '../utils/serial-poller'
 import {
+  modelCompanyName as getModelCompanyName,
+  modelDisplayName as getModelDisplayLabel,
+  modelLogoKey as getModelLogoKey,
+  modelLogoSrc as getModelLogoSrc,
+  modelLogoText as getModelLogoText,
+} from '../utils/model-presentation'
+import {
   createAiToolRegistry,
   DEFAULT_AI_TOOLS,
   type AiToolDescriptor,
@@ -1891,95 +1898,8 @@ function getAgentStatusClass(agent: AgentInfo): string {
   return 'is-idle'
 }
 
-function getModelDisplayLabel(model: string): string {
-  const names: Record<string, string> = safeRecordFrom({
-    'deepseek-v4-flash': 'DeepSeek',
-    'deepseek-v4-pro': 'DeepSeek',
-    'deepseek-v3': 'DeepSeek',
-    'deepseek-chat': 'DeepSeek',
-    'deepseek-reasoner': 'DeepSeek',
-    'MiniMax-M2.7': 'MiniMax',
-    'claude-fable-5': 'Claude',
-    'claude-opus-4-8': 'Claude',
-    'claude-sonnet-5': 'Claude',
-    'claude-haiku-4-5': 'Claude',
-    'claude-sonnet-4-6': 'Claude',
-    'claude-sonnet-4-5': 'Claude',
-    'claude-opus-4': 'Claude',
-    'claude-opus-4-6': 'Claude',
-    'claude-opus-4-7': 'Claude',
-    'claude-opus-4-5': 'Claude',
-    'chat-latest': 'ChatGPT',
-    'gpt-5.3-codex': 'Codex',
-    'gpt-5.4': 'GPT-5.4',
-    'gpt-5.4-mini': 'GPT-5.4 Mini',
-    'gpt-5.4-nano': 'GPT-5.4 Nano',
-    'gpt-5.4-pro': 'GPT-5.4 Pro',
-    'gpt-4o': 'GPT-4o',
-    'gpt-4o-mini': 'GPT-4o Mini',
-    'gpt-5.5': 'GPT-5.5',
-    'gpt-5.5-pro': 'GPT-5.5 Pro',
-    'gpt-5.6-sol': 'GPT-5.6 Sol',
-    'gpt-5.6-terra': 'GPT-5.6 Terra',
-    'gpt-5.6-luna': 'GPT-5.6 Luna',
-    'Qwen3.5-4B-OptiQ-4bit': '本地 Qwen3.5 4B',
-    'qwen3.5': '本地 Qwen3.5',
-    'qwen3.5:9b': '本地 Qwen3.5 9B',
-    'qwen2.5': '本地 Qwen2.5',
-    'gemma3:12b': '本地 Gemma 3 12B',
-  })
-  const lower = String(model || '').toLowerCase()
-  if (lower.includes('qwen')) return `本地千问 ${model.replace(/^.*qwen/i, 'Qwen')}`
-  if (lower.includes('gemma')) return `本地 Google ${model.replace(/^.*gemma/i, 'Gemma')}`
-  return ownValue(names, model) || model.split('/').pop() || model
-}
-
 function getModelColor(model: string, index = 0): string {
   return ownValue(MODEL_COLOR_MAP, model) || MODEL_COLOR_PALETTE[index % MODEL_COLOR_PALETTE.length]
-}
-
-function getModelLogoKey(model: string): string {
-  const m = String(model || '').toLowerCase()
-  if (m.includes('deepseek')) return 'deepseek'
-  if (m.includes('minimax')) return 'minimax'
-  if (m.includes('claude') || m.includes('anthropic')) return 'anthropic'
-  if (m.includes('gpt') || m.includes('openai')) return 'openai'
-  if (m.includes('qwen')) return 'qwen'
-  if (m.includes('gemma') || m.includes('google')) return 'google'
-  if (m.includes('ollama') || m.includes('local') || m.includes('本地')) return 'local'
-  return 'generic'
-}
-
-function getModelLogoText(model: string): string {
-  const key = getModelLogoKey(model)
-  if (key === 'deepseek') return 'DS'
-  if (key === 'minimax') return 'MM'
-  if (key === 'anthropic') return 'A'
-  if (key === 'openai') return 'AI'
-  if (key === 'qwen') return '千'
-  if (key === 'google') return 'G'
-  if (key === 'local') return '本'
-  return 'M'
-}
-
-function getModelLogoSrc(model: string): string {
-  const key = getModelLogoKey(model)
-  if (['deepseek', 'minimax', 'anthropic', 'openai', 'qwen', 'google'].includes(key)) {
-    return `/model-logos/${key}.svg`
-  }
-  return ''
-}
-
-function getModelCompanyName(model: string): string {
-  const key = getModelLogoKey(model)
-  if (key === 'deepseek') return 'DeepSeek'
-  if (key === 'minimax') return 'MiniMax'
-  if (key === 'anthropic') return 'Anthropic / Claude'
-  if (key === 'openai') return 'OpenAI'
-  if (key === 'qwen') return 'Alibaba Qwen'
-  if (key === 'google') return 'Google'
-  if (key === 'local') return '本地模型'
-  return getModelDisplayLabel(model)
 }
 
 function formatDateKey(date: Date): string {
