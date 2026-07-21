@@ -623,6 +623,10 @@ import {
   localUsageSourceAvatarSrc,
   localUsageSourceDisplayName,
   mergeUsageTimelines,
+  type AgentModelUsageMap,
+  type ModelUsageMap,
+  type TimelineDay,
+  type UsageDatum,
 } from '../utils/usageTimeline'
 import { createSafeRecord, ownValue, safeRecordFrom } from '../utils/safe-record.mjs'
 import { filterTimelineBySourceIds } from '../utils/project-token-scope.mjs'
@@ -655,33 +659,6 @@ watch(visible, (val) => {
 })
 
 // ── Sprint 6 + Sprint 8: 费用时间线图表 ──
-interface UsageDatum {
-  tokens: number
-  cost: number
-  input?: number
-  output?: number
-  cacheRead?: number
-  cacheWrite?: number
-  inputCost?: number
-  outputCost?: number
-  cacheReadCost?: number
-  cacheWriteCost?: number
-  longContextCost?: number
-  noCacheCost?: number
-  priceStatus?: 'configured' | 'partial' | 'unconfigured'
-  billingMode?: 'per_token' | 'free' | 'subscription_monthly' | 'use_default' | 'unconfigured' | 'mixed'
-}
-type ModelUsageMap = Record<string, UsageDatum>
-type AgentModelUsageMap = Record<string, ModelUsageMap>
-interface TimelineDay {
-  date: string
-  tokens: number
-  cost: number
-  priceStatus?: UsageDatum['priceStatus']
-  billingMode?: UsageDatum['billingMode']
-  byModel?: ModelUsageMap
-  byAgentByModel?: AgentModelUsageMap
-}
 const chartLoading = ref(false)
 const timeline = ref<TimelineDay[]>([])
 const timelineUpdatedAt = ref('')

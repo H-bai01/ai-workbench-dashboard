@@ -11,6 +11,8 @@ export interface UsageDatum {
   cacheWriteCost?: number
   longContextCost?: number
   noCacheCost?: number
+  priceStatus?: 'configured' | 'partial' | 'unconfigured'
+  billingMode?: 'per_token' | 'free' | 'subscription_monthly' | 'use_default' | 'unconfigured' | 'mixed'
 }
 
 export type ModelUsageMap = Record<string, UsageDatum>

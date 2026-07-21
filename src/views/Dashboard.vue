@@ -1191,6 +1191,9 @@ import { formatTokenZh } from '../utils/tokenFormat'
 import {
   localUsageSourceId,
   mergeUsageTimelines,
+  type ModelUsageMap,
+  type TimelineDay,
+  type UsageDatum,
 } from '../utils/usageTimeline'
 import { setDefaultAvatar } from '../utils/avatarFallback'
 import { normalizeAgentAvatarSource } from '../utils/agent-presentation.mjs'
@@ -1556,16 +1559,6 @@ function pageModuleOrder(id: string): number {
   return idx === -1 ? 100 : idx + 1
 }
 
-interface UsageDatum {
-  tokens: number
-  cost: number
-  input?: number
-  output?: number
-  cacheRead?: number
-  cacheWrite?: number
-  priceStatus?: 'configured' | 'partial' | 'unconfigured'
-  billingMode?: 'per_token' | 'free' | 'subscription_monthly' | 'use_default' | 'unconfigured' | 'mixed'
-}
 type PulseAppId = string
 interface LocalAiUsageItem {
   id: string
@@ -1631,16 +1624,6 @@ interface PulseApp {
   metricText: string
   usage: UsageDatum
   rows: PulseRow[]
-}
-type ModelUsageMap = Record<string, UsageDatum>
-interface TimelineDay {
-  date: string
-  tokens: number
-  cost: number
-  priceStatus?: UsageDatum['priceStatus']
-  billingMode?: UsageDatum['billingMode']
-  byModel?: ModelUsageMap
-  byAgentByModel?: Record<string, ModelUsageMap>
 }
 type TokenMiniRangeValue = 'today' | '3d' | '7d' | '30d' | 'month' | 'lastMonth' | 'custom' | 'all'
 type SummaryUsageRangeValue = Exclude<TokenMiniRangeValue, 'custom'>
