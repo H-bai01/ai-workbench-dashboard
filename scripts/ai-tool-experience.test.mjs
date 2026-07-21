@@ -40,6 +40,9 @@ test('全局搜索直接消费通用监控对象而不是只认识 Agent', () =>
 
 test('首页概览只有内容超出时才接管滚轮', () => {
   const dashboard = read('src/views/Dashboard.vue')
+  assert.match(dashboard, /\.dashboard\s*\{[\s\S]*height:\s*100dvh[\s\S]*overflow-y:\s*scroll[\s\S]*scrollbar-gutter:\s*stable/)
+  assert.match(dashboard, /\.dashboard\s*>\s*\*[\s\S]*flex-shrink:\s*0/)
+  assert.match(dashboard, /\.dashboard::\-webkit-scrollbar-thumb[\s\S]*min-height:\s*48px/)
   assert.match(dashboard, /model-share-scroll:not\(\.is-expanded\)[\s\S]*overflow-y:\s*hidden/)
   assert.match(dashboard, /contribution-scroll:not\(\.is-expanded\)[\s\S]*overflow-y:\s*hidden/)
   assert.match(dashboard, /'is-scrollable': selectedPulseRows\.length > 8/)

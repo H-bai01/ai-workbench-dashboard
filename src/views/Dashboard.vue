@@ -3960,11 +3960,41 @@ onUnmounted(() => {
 .dashboard {
   --dashboard-inline-gutter: clamp(14px, 1.5vw, 40px);
   --dashboard-layout-gap: clamp(12px, 1vw, 24px);
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+  overscroll-behavior-y: contain;
   background: var(--bg-primary);
   color: var(--text-primary);
   display: flex;
   flex-direction: column;
+}
+
+/* 独立安装窗口由首页根容器统一承接整页滚动，避免滚轮被内部列表或弹窗状态截断。 */
+.dashboard > * {
+  flex-shrink: 0;
+}
+
+.dashboard::-webkit-scrollbar {
+  width: 10px;
+}
+
+.dashboard::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.dashboard::-webkit-scrollbar-thumb {
+  min-height: 48px;
+  background: rgba(235, 235, 245, 0.30);
+  border: 2px solid var(--bg-primary);
+  border-radius: 999px;
+}
+
+.dashboard::-webkit-scrollbar-thumb:hover {
+  background: rgba(235, 235, 245, 0.48);
 }
 
 /* ==================== STATUS BAR ==================== */
