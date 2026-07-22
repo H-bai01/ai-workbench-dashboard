@@ -1,5 +1,9 @@
 <template>
-  <div class="agent-voice-stage" :class="[`state-${callState}`, stageThemeClass, { 'is-muted': isMuted }]">
+  <div
+    class="agent-voice-stage"
+    :class="[`state-${callState}`, stageThemeClass, { 'is-muted': isMuted }]"
+    :style="panelWidth > 0 ? { width: `${panelWidth}px` } : undefined"
+  >
     <div class="voice-stage-inner">
       <div class="voice-stage-surface" />
 
@@ -244,6 +248,7 @@ import {
 import { setDefaultAvatar } from '../utils/avatarFallback'
 
 const props = defineProps<{
+  panelWidth: number
   agentKey?: string
   agentName: string
   avatarSrc?: string
@@ -1119,9 +1124,9 @@ onUnmounted(() => {
   top: 0;
   left: 0;
   bottom: 0;
-  width: clamp(480px, 34vw, 720px);
-  max-width: 720px;
-  min-width: 480px;
+  width: clamp(400px, 25vw, 500px);
+  max-width: 500px;
+  min-width: 400px;
   pointer-events: auto;
   display: flex;
   align-items: stretch;

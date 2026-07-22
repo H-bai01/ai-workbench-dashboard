@@ -543,6 +543,7 @@
   <Teleport to="body">
     <AgentVoiceStage
       v-if="drawerVisible && agent"
+      :panel-width="voicePanelWidth"
       :agent-key="agent.key"
       :agent-name="displayAgentName"
       :avatar-src="drawerAvatarSrc"
@@ -701,17 +702,33 @@ const drawerVisible = computed({
 })
 
 const viewportWidth = ref(typeof window === 'undefined' ? 1440 : window.innerWidth)
+const viewportScale = ref(1)
+
+function resolveViewportScale(): number {
+  if (typeof window === 'undefined' || typeof document === 'undefined' || !document.body) return 1
+  const scale = Number.parseFloat(window.getComputedStyle(document.body).getPropertyValue('zoom'))
+  return Number.isFinite(scale) && scale > 0 ? scale : 1
+}
+
+const voicePanelVisualWidth = computed(() => {
+  const width = viewportWidth.value
+  if (width <= 1380) return 0
+  return Math.min(500, Math.max(400, width * 0.25))
+})
+
+const voicePanelWidth = computed(() => {
+  if (voicePanelVisualWidth.value === 0) return 0
+  return Math.round(voicePanelVisualWidth.value / viewportScale.value)
+})
 
 const drawerSize = computed(() => {
-  const width = viewportWidth.value
-  if (width <= 1380) return `${Math.min(1040, width)}px`
-
-  const voicePanelWidth = Math.min(720, Math.max(480, width * 0.34))
-  return `${width - voicePanelWidth}px`
+  const availableVisualWidth = viewportWidth.value - voicePanelVisualWidth.value
+  return `${Math.round(availableVisualWidth / viewportScale.value)}px`
 })
 
 function updateViewportWidth(): void {
   viewportWidth.value = window.innerWidth
+  viewportScale.value = resolveViewportScale()
 }
 
 const agent = computed(() => {
@@ -2586,6 +2603,7 @@ watch(() => agent.value?.key, () => {
 })
 
 onMounted(() => {
+  updateViewportWidth()
   loadQuickTemplates()
   document.addEventListener('visibilitychange', handleDrawerVisibilityChange)
   window.addEventListener('quick-message-config-updated', onQuickMessageConfigUpdated)
