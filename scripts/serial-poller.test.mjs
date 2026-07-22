@@ -1,6 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { createSerialPoller } from '../src/utils/serial-poller.ts'
+
+const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 function fakeTimers() {
   let nextId = 1
@@ -96,4 +101,12 @@ test('重新调度会读取最新延迟且任务错误不会中断轮询', async
   await new Promise(resolve => setImmediate(resolve))
   assert.equal(errors.length, 1)
   assert.equal(timers.entries()[0][1].delay, 500)
+})
+
+test('用量轮询等待同组异步刷新全部完成', () => {
+  const dashboard = fs.readFileSync(path.join(repo, 'src/views/Dashboard.vue'), 'utf8')
+  const store = fs.readFileSync(path.join(repo, 'src/stores/agent.ts'), 'utf8')
+
+  assert.match(dashboard, /const localUsagePoller = createSerialPoller\(\{[\s\S]*?task: async \(\) => \{[\s\S]*?await Promise\.all\(\[[\s\S]*?refreshTokenUsageSnapshot\(\)[\s\S]*?refreshSummaryUsage\(\)/)
+  assert.match(store, /startStorePoll\(async \(\) => \{[\s\S]*?await Promise\.all\(\[[\s\S]*?fetchGlobalUsage\(\)[\s\S]*?fetchCostSummary\(\)/)
 })

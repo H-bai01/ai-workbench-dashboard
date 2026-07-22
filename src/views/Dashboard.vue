@@ -3788,9 +3788,11 @@ const workflowPoller = createSerialPoller({
 })
 
 const localUsagePoller = createSerialPoller({
-  task: () => {
-    void refreshTokenUsageSnapshot()
-    void refreshSummaryUsage()
+  task: async () => {
+    await Promise.all([
+      refreshTokenUsageSnapshot(),
+      refreshSummaryUsage(),
+    ])
   },
   getDelayMs: () => 60 * 1000,
 })

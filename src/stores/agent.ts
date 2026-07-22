@@ -1370,9 +1370,11 @@ export const useAgentStore = defineStore('agent', () => {
       startStorePoll(fetchHealth, () => isPageHidden() ? BACKGROUND_HEALTH_CHECK_INTERVAL : HEALTH_CHECK_INTERVAL),
       startStorePoll(fetchGpuVram, () => isPageHidden() ? BACKGROUND_GPU_POLL_INTERVAL : GPU_POLL_INTERVAL),
       startStorePoll(checkNewMessages, () => isPageHidden() ? BACKGROUND_MESSAGE_POLL_INTERVAL : MESSAGE_POLL_INTERVAL),
-      startStorePoll(() => {
-        fetchGlobalUsage()
-        fetchCostSummary()
+      startStorePoll(async () => {
+        await Promise.all([
+          fetchGlobalUsage(),
+          fetchCostSummary(),
+        ])
       }, () => isPageHidden() ? BACKGROUND_USAGE_POLL_INTERVAL : USAGE_POLL_INTERVAL),
     ]
 

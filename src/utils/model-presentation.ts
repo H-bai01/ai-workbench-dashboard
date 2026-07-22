@@ -1,6 +1,6 @@
 import { ownValue, safeRecordFrom } from './safe-record.mjs'
 
-export type ModelLabelStyle = 'compact' | 'detailed'
+export type ModelLabelStyle = 'compact' | 'detailed' | 'billing'
 
 const COMPACT_NAMES: Record<string, string> = safeRecordFrom({
   'deepseek-v4-flash': 'DeepSeek',
@@ -66,11 +66,20 @@ const DETAILED_NAMES: Record<string, string> = safeRecordFrom({
   'gemma3:12b': '本地 Google Gemma 3 12B',
 })
 
+const BILLING_NAMES: Record<string, string> = safeRecordFrom({
+  ...DETAILED_NAMES,
+  unknown: '未知模型',
+})
+
 export function modelDisplayName(model: string, style: ModelLabelStyle = 'compact'): string {
   const value = String(model || '')
-  const names = style === 'detailed' ? DETAILED_NAMES : COMPACT_NAMES
+  const names = style === 'compact'
+    ? COMPACT_NAMES
+    : style === 'billing'
+      ? BILLING_NAMES
+      : DETAILED_NAMES
   const lower = value.toLowerCase()
-  if (style === 'compact') {
+  if (style !== 'detailed') {
     if (lower.includes('qwen')) return `本地千问 ${value.replace(/^.*qwen/i, 'Qwen')}`
     if (lower.includes('gemma')) return `本地 Google ${value.replace(/^.*gemma/i, 'Gemma')}`
   }

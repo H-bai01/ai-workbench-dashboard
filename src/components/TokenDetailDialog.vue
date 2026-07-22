@@ -631,6 +631,7 @@ import {
 import { createSafeRecord, ownValue, safeRecordFrom } from '../utils/safe-record.mjs'
 import { filterTimelineBySourceIds } from '../utils/project-token-scope.mjs'
 import { normalizeAgentAvatarSource } from '../utils/agent-presentation.mjs'
+import { modelDisplayName as formatModelDisplayName } from '../utils/model-presentation'
 import type { ProjectTokenScope } from '../types/project-token-scope'
 
 const visible = defineModel<boolean>('visible', { default: false })
@@ -1275,50 +1276,8 @@ function getModelColor(model: string): string {
   return dynamicColors[model]
 }
 
-// 模型显示名映射
-const MODEL_DISPLAY: Record<string, string> = safeRecordFrom({
-  'deepseek-v4-flash': 'DeepSeek V4 Flash',
-  'deepseek-v4-pro': 'DeepSeek V4 Pro',
-  'deepseek-v3': 'DeepSeek V3',
-  'deepseek-chat': 'DeepSeek Chat',
-  'deepseek-reasoner': 'DeepSeek Reasoner',
-  'MiniMax-M2.7': 'MiniMax M2.7',
-  'claude-fable-5': 'Claude Fable 5',
-  'claude-opus-4-8': 'Claude Opus 4.8',
-  'claude-sonnet-5': 'Claude Sonnet 5',
-  'claude-haiku-4-5': 'Claude Haiku 4.5',
-  'claude-sonnet-4-6': 'Claude Sonnet 4.6',
-  'claude-sonnet-4-5': 'Claude Sonnet 4.5',
-  'claude-opus-4': 'Claude Opus 4',
-  'claude-opus-4-6': 'Claude Opus 4.6',
-  'claude-opus-4-7': 'Claude Opus 4.7',
-  'claude-opus-4-5': 'Claude Opus 4.5',
-  'chat-latest': 'ChatGPT Latest',
-  'gpt-5.3-codex': 'GPT-5.3 Codex',
-  'gpt-5.4': 'GPT-5.4',
-  'gpt-5.4-mini': 'GPT-5.4 Mini',
-  'gpt-5.4-nano': 'GPT-5.4 Nano',
-  'gpt-5.4-pro': 'GPT-5.4 Pro',
-  'gpt-5.5': 'GPT-5.5',
-  'gpt-5.5-pro': 'GPT-5.5 Pro',
-  'gpt-5.6-sol': 'GPT-5.6 Sol',
-  'gpt-5.6-terra': 'GPT-5.6 Terra',
-  'gpt-5.6-luna': 'GPT-5.6 Luna',
-  'gpt-4o': 'GPT-4o',
-  'gpt-4o-mini': 'GPT-4o Mini',
-  'Qwen3.5-4B-OptiQ-4bit': '本地 Qwen3.5 4B',
-  'qwen3.5': '本地 Qwen3.5',
-  'qwen3.5:9b': '本地 Qwen3.5 9B',
-  'qwen2.5': '本地 Qwen2.5',
-  'gemma3:12b': '本地 Gemma 3 12B',
-  'unknown': '未知模型',
-})
-
 function getModelDisplayName(model: string): string {
-  const lower = String(model || '').toLowerCase()
-  if (lower.includes('qwen')) return `本地千问 ${model.replace(/^.*qwen/i, 'Qwen')}`
-  if (lower.includes('gemma')) return `本地 Google ${model.replace(/^.*gemma/i, 'Gemma')}`
-  return ownValue(MODEL_DISPLAY, model) || model
+  return formatModelDisplayName(model, 'billing')
 }
 
 function sortAgentRows(a: { agentName?: string; agentId?: string }, b: { agentName?: string; agentId?: string }): number {
