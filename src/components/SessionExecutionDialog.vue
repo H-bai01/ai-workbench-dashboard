@@ -336,6 +336,26 @@ watch([visible, scopeKey], ([isVisible]) => {
 </script>
 
 <style scoped>
+:global(.session-execution-dialog) {
+  display: flex;
+  flex-direction: column;
+  height: min(840px, 92dvh);
+  max-height: 92dvh;
+  overflow: hidden;
+}
+
+:global(.session-execution-dialog .el-dialog__header) {
+  flex: 0 0 auto;
+}
+
+:global(.session-execution-dialog .el-dialog__body) {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .execution-intro,
 .session-list-head,
 .event-panel-head,
@@ -348,6 +368,7 @@ watch([visible, scopeKey], ([isVisible]) => {
 }
 
 .execution-intro {
+  flex: 0 0 auto;
   justify-content: space-between;
   gap: 16px;
   padding: 10px 0 14px;
@@ -356,20 +377,25 @@ watch([visible, scopeKey], ([isVisible]) => {
 
 .execution-intro div { display: grid; gap: 3px; }
 .execution-intro span { color: var(--el-text-color-secondary); font-size: 12px; }
-.execution-error { margin: 10px 0; padding: 9px 12px; color: var(--el-color-danger); background: var(--el-color-danger-light-9); border-radius: 4px; }
+.execution-error { flex: 0 0 auto; margin: 10px 0; padding: 9px 12px; color: var(--el-color-danger); background: var(--el-color-danger-light-9); border-radius: 4px; }
 
 .execution-layout {
   display: grid;
+  flex: 1 1 auto;
   grid-template-columns: minmax(240px, 290px) minmax(0, 1fr);
-  min-height: 620px;
-  max-height: 74vh;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .session-list {
+  min-height: 0;
   min-width: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 14px 12px 14px 0;
   border-right: 1px solid var(--el-border-color);
+  scrollbar-gutter: stable;
 }
 
 .session-list-head { justify-content: space-between; padding: 0 8px 10px; }
@@ -387,7 +413,7 @@ watch([visible, scopeKey], ([isVisible]) => {
 .status-aborted { background: var(--el-text-color-secondary); }
 .status-idle { background: var(--el-color-success); }
 
-.event-panel { min-width: 0; display: flex; flex-direction: column; padding: 14px 0 0 16px; }
+.event-panel { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 14px 0 0 16px; }
 .event-panel-head { justify-content: space-between; gap: 16px; padding: 0 2px 12px; }
 .event-session-title { min-width: 0; display: grid; gap: 3px; }
 .event-session-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -397,7 +423,7 @@ watch([visible, scopeKey], ([isVisible]) => {
 .event-filter button, .load-earlier { min-height: 30px; padding: 5px 11px; color: var(--el-text-color-regular); background: var(--el-fill-color-light); border: 1px solid var(--el-border-color); border-radius: 4px; cursor: pointer; }
 .event-filter button.active { color: var(--el-color-primary); border-color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
 .event-filter button:disabled { cursor: wait; opacity: 0.65; }
-.event-scroll { min-height: 0; overflow: auto; padding-right: 6px; }
+.event-scroll { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding-right: 6px; scrollbar-gutter: stable; }
 .load-earlier { display: block; margin: 0 auto 12px; }
 .execution-loading { padding: 24px; color: var(--el-text-color-secondary); text-align: center; }
 
@@ -433,9 +459,18 @@ pre { max-height: 220px; overflow: auto; padding: 9px; margin: 6px 0 0; white-sp
 .artifact-meta { display: grid; flex: 0 0 auto; gap: 2px; text-align: right; }
 
 @media (max-width: 760px) {
-  .execution-layout { grid-template-columns: 1fr; max-height: none; }
-  .session-list { max-height: 220px; border-right: 0; border-bottom: 1px solid var(--el-border-color); padding-right: 0; }
-  .event-panel { min-height: 520px; padding-left: 0; }
+  :global(.session-execution-dialog) {
+    height: 92dvh;
+    max-height: 92dvh;
+  }
+
+  .execution-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(120px, 32%) minmax(0, 1fr);
+  }
+
+  .session-list { max-height: none; border-right: 0; border-bottom: 1px solid var(--el-border-color); padding-right: 0; }
+  .event-panel { min-height: 0; padding-left: 0; }
   .event-panel-head { align-items: flex-start; flex-direction: column; }
 }
 </style>

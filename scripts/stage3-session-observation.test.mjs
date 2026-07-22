@@ -41,6 +41,19 @@ test('默认 Stage3A 测试使用一次性 HOME 且不包含真实会话验收',
   assert.match(runner, /createIsolatedProcessEnv\(\{ isolationRoot: root, homeDir: home \}\)/)
 })
 
+test('执行记录弹窗限制在视口内且会话与长内容独立滚动', () => {
+  const source = fs.readFileSync(path.join(repo, 'src', 'components', 'SessionExecutionDialog.vue'), 'utf8')
+
+  assert.match(source, /:global\(\.session-execution-dialog\)\s*\{[^}]*height:\s*min\(840px,\s*92dvh\)[^}]*overflow:\s*hidden/s)
+  assert.match(source, /:global\(\.session-execution-dialog \.el-dialog__body\)\s*\{[^}]*min-height:\s*0[^}]*overflow:\s*hidden/s)
+  assert.match(source, /\.execution-layout\s*\{[^}]*flex:\s*1 1 auto[^}]*min-height:\s*0[^}]*overflow:\s*hidden/s)
+  assert.match(source, /\.session-list\s*\{[^}]*min-height:\s*0[^}]*overflow-y:\s*auto/s)
+  assert.match(source, /\.event-panel\s*\{[^}]*min-height:\s*0[^}]*overflow:\s*hidden/s)
+  assert.match(source, /\.event-scroll\s*\{[^}]*flex:\s*1 1 auto[^}]*min-height:\s*0[^}]*overflow-y:\s*auto/s)
+  assert.doesNotMatch(source, /\.execution-layout\s*\{[^}]*min-height:\s*620px/s)
+  assert.doesNotMatch(source, /\.event-panel\s*\{[^}]*min-height:\s*520px/s)
+})
+
 function runNodeChild(code, args = [], timeoutMs = 3_000) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ['--input-type=module', '-e', code, ...args], {

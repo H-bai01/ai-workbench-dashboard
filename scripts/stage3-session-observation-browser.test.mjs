@@ -326,6 +326,36 @@ test('真实 Chrome 从项目专属明细进入统一只读执行记录并分页
   const expandedCount = await page.locator('.event-item').count()
   assert.ok(expandedCount > initialCount)
 
+  await page.setViewportSize({ width: 1200, height: 760 })
+  await page.waitForTimeout(100)
+  const layoutBounds = await page.evaluate(() => {
+    const dialog = document.querySelector('.session-execution-dialog')
+    const layout = document.querySelector('.session-execution-dialog .execution-layout')
+    const list = document.querySelector('.session-execution-dialog .session-list')
+    const events = document.querySelector('.session-execution-dialog .event-scroll')
+    if (!dialog || !layout || !list || !events) return null
+    const dialogRect = dialog.getBoundingClientRect()
+    const layoutRect = layout.getBoundingClientRect()
+    return {
+      viewportHeight: window.innerHeight,
+      dialogTop: dialogRect.top,
+      dialogBottom: dialogRect.bottom,
+      layoutBottom: layoutRect.bottom,
+      listOverflowY: getComputedStyle(list).overflowY,
+      eventOverflowY: getComputedStyle(events).overflowY,
+      eventClientHeight: events.clientHeight,
+      eventScrollHeight: events.scrollHeight,
+    }
+  })
+  assert.ok(layoutBounds)
+  assert.ok(layoutBounds.dialogTop >= 0)
+  assert.ok(layoutBounds.dialogBottom <= layoutBounds.viewportHeight + 1)
+  assert.ok(layoutBounds.layoutBottom <= layoutBounds.dialogBottom + 1)
+  assert.equal(layoutBounds.listOverflowY, 'auto')
+  assert.equal(layoutBounds.eventOverflowY, 'auto')
+  assert.ok(layoutBounds.eventScrollHeight > layoutBounds.eventClientHeight)
+  await page.setViewportSize({ width: 1800, height: 1200 })
+
   await page.locator('.event-filter button').filter({ hasText: '只看思考' }).click()
   await page.waitForSelector('.event-thinking', { state: 'visible' })
   await page.locator('.event-filter button').filter({ hasText: '只看思考' }).waitFor({ state: 'visible' })
