@@ -4,7 +4,12 @@
     <header class="status-bar">
       <div class="status-bar-inner">
         <div class="brand">
-          <el-icon :size="24" class="brand-icon"><Monitor /></el-icon>
+          <img
+            class="brand-icon"
+            src="/brand/ai-workbench-favicon.png"
+            alt=""
+            aria-hidden="true"
+          />
           <div class="brand-copy">
             <h1 class="brand-title">
               <span class="brand-name">AI 工作台总控</span>
@@ -4048,7 +4053,11 @@ onUnmounted(() => {
 }
 
 .brand-icon {
-  color: var(--accent);
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-radius: 7px;
+  object-fit: cover;
   filter: drop-shadow(0 0 12px rgba(10, 132, 255, 0.24));
 }
 

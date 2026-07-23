@@ -27,7 +27,7 @@ OpenClaw 的 MIT 许可仅适用于已识别的上游内容。本地中文翻译
 - 基线中的 `public/icons.svg` 与 Vite `template-vue-ts/public/icons.svg` 的 blob 完全一致。
 - 基线中的旧 `public/app-icon.svg` 复用了 Vite favicon 的主路径。
 
-这些 Vite 衍生或未使用资源没有进入本候选。当前 `public/favicon.svg` 与 `public/app-icon.svg` 是本仓库原生的中性几何图形，也不再用于代替 OpenClaw、ClawHub、taskflow 或 skill-creator 等标识。
+这些 Vite 衍生或未使用资源没有进入当前版本。当前应用图标的规范原图保存在 `assets/branding/ai-workbench-icon-master.png`，浏览器、PWA 与 Apple touch icon 均由该原图生成并集中存放在 `public/brand/`；这些文件不包含第三方标识，也不用于代替 OpenClaw、ClawHub、taskflow 或 skill-creator 等标识。
 
 ## Markdown Mark
 

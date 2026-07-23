@@ -11,6 +11,7 @@ const forbiddenPngChunks = new Set(['eXIf', 'tEXt', 'zTXt', 'iTXt', 'tIME'])
 const concreteHome = /(?:\/Users\/(?![<$%{])[^/\s]+\/|\/home\/(?![<$%{])[^/\s]+\/|[A-Z]:\\Users\\(?![<$%{])[^\\\s]+\\)/i
 const localIdentity = /(?:\b[\w.+-]+@[\w.-]+\.local\b|\b[\w.-]*(?:MacBook|Mac-Pro|iMac)[\w.-]*\b)/i
 const reviewedMedia = new Set([
+  'assets/branding/ai-workbench-icon-master.png',
   'docs/images/activity-timeline.png',
   'docs/images/agent-detail.png',
   'docs/images/agent-voice.png',
@@ -26,13 +27,15 @@ const reviewedMedia = new Set([
   'docs/images/usage-details.png',
   'docs/images/version-management.png',
   'docs/images/workbench-overview.png',
-  'public/app-icon.svg',
   'public/app-logos/chatgpt-white-black.svg',
   'public/app-logos/claude-app-orange.png',
   'public/app-logos/codex-app.png',
   'public/app-logos/openclaw-lobster.png',
   'public/avatars/default.svg',
-  'public/favicon.svg',
+  'public/brand/ai-workbench-apple-touch-icon.png',
+  'public/brand/ai-workbench-favicon.png',
+  'public/brand/ai-workbench-icon-192.png',
+  'public/brand/ai-workbench-icon-512.png',
   'public/model-logos/anthropic.svg',
   'public/model-logos/deepseek.svg',
   'public/model-logos/google.svg',
@@ -282,13 +285,13 @@ test('新增危险 SVG、WebM 和引用式断链全部关闭失败', () => {
 
 test('命名空间危险 SVG 和 Markdown 快捷引用不能绕过护栏', () => {
   withTrackedFixture((fixtureRepo) => {
-    fs.writeFileSync(path.join(fixtureRepo, 'public/favicon.svg'), '<svg xmlns="http://www.w3.org/2000/svg" xmlns:s="http://www.w3.org/2000/svg"><s:script>alert(1)</s:script></svg>')
+    fs.writeFileSync(path.join(fixtureRepo, 'public/avatars/default.svg'), '<svg xmlns="http://www.w3.org/2000/svg" xmlns:s="http://www.w3.org/2000/svg"><s:script>alert(1)</s:script></svg>')
   }, (fixtureRepo) => {
     assert.throws(() => auditReleaseMedia(fixtureRepo), /危险元素 script/)
   })
 
   withTrackedFixture((fixtureRepo) => {
-    fs.writeFileSync(path.join(fixtureRepo, 'public/favicon.svg'), '<svg xmlns="http://www.w3.org/2000/svg" xmlns:e="urn:fixture"><path e:onload="alert(1)"/></svg>')
+    fs.writeFileSync(path.join(fixtureRepo, 'public/avatars/default.svg'), '<svg xmlns="http://www.w3.org/2000/svg" xmlns:e="urn:fixture"><path e:onload="alert(1)"/></svg>')
   }, (fixtureRepo) => {
     assert.throws(() => auditReleaseMedia(fixtureRepo), /事件处理属性 onload/)
   })

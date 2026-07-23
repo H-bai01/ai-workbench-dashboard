@@ -18,7 +18,7 @@
 
 ## 首个公开候选中的处理
 
-- `public/favicon.svg` 与 `public/app-icon.svg` 已替换为本仓库原生的简单几何图形，不包含第三方标识。
+- `assets/branding/ai-workbench-icon-master.png` 及 `public/brand/` 下的应用图标派生文件是本项目的应用标识，不包含第三方品牌 Logo。
 - 未使用的 `public/icons.svg`、`src/assets/vite.svg` 与 `src/assets/vue.svg` 未进入本候选。
 - OpenClaw 名称明确的技能使用现有 OpenClaw 客户端标识；ClawHub、taskflow、skill-creator 等没有已确认独立标识的技能使用中性默认图标。
 - 其余现有第三方 Logo 仅保留用于准确识别客户端、模型、技能或工具，并继续受各自权利人的规则约束。

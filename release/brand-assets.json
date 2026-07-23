@@ -244,9 +244,24 @@
   ],
   "nonBrandMedia": [
     {
-      "path": "public/app-icon.svg",
+      "path": "assets/branding/ai-workbench-icon-master.png",
       "publicationDecision": "include",
-      "purpose": "Repository-native neutral geometric PWA icon"
+      "purpose": "Canonical source artwork for the AI Workbench application icon"
+    },
+    {
+      "path": "public/brand/ai-workbench-icon-512.png",
+      "publicationDecision": "include",
+      "purpose": "512px PWA application icon derived from the canonical source"
+    },
+    {
+      "path": "public/brand/ai-workbench-icon-192.png",
+      "publicationDecision": "include",
+      "purpose": "192px PWA application icon derived from the canonical source"
+    },
+    {
+      "path": "public/brand/ai-workbench-apple-touch-icon.png",
+      "publicationDecision": "include",
+      "purpose": "180px Apple touch icon derived from the canonical source"
     },
     {
       "path": "public/avatars/default.svg",
@@ -254,9 +269,9 @@
       "purpose": "Neutral default avatar"
     },
     {
-      "path": "public/favicon.svg",
+      "path": "public/brand/ai-workbench-favicon.png",
       "publicationDecision": "include",
-      "purpose": "Repository-native neutral geometric favicon"
+      "purpose": "64px browser and in-product brand icon derived from the canonical source"
     },
     {
       "path": "public/skill-logos/browser.svg",

@@ -10,6 +10,7 @@ SHA256SUMS.txt
 SOURCE_PROVENANCE.md
 THIRD_PARTY_NOTICES.md
 TRADEMARKS.md
+assets/branding/ai-workbench-icon-master.png
 docs/AI工具适配器开发指南.md
 docs/images/file-management.png
 docs/images/task-center.png
@@ -22,13 +23,15 @@ index.html
 install.sh
 package-lock.json
 package.json
-public/app-icon.svg
 public/app-logos/chatgpt-white-black.svg
 public/app-logos/claude-app-orange.png
 public/app-logos/codex-app.png
 public/app-logos/openclaw-lobster.png
 public/avatars/default.svg
-public/favicon.svg
+public/brand/ai-workbench-apple-touch-icon.png
+public/brand/ai-workbench-favicon.png
+public/brand/ai-workbench-icon-192.png
+public/brand/ai-workbench-icon-512.png
 public/manifest.webmanifest
 public/model-logos/anthropic.svg
 public/model-logos/deepseek.svg
