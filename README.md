@@ -1,4 +1,10 @@
-# AI 工作台总控 / AI Workbench Dashboard
+<p align="center">
+  <img src="public/brand/ai-workbench-icon-512.png" width="180" alt="AI 工作台总控全新应用图标">
+</p>
+
+<h1 align="center">AI 工作台总控 / AI Workbench Dashboard</h1>
+
+<p align="center">把分散的本机 AI 工具，放进一个统一、清晰、可管理的工作台。</p>
 
 一个面向本机 AI 工具的统一监控与管理台。把 OpenClaw、Codex、Claude Code 等工具放进同一个界面，集中查看运行状态、Token 与 API 等价费用、项目与会话、工具调用、工作目录、自动任务和版本更新。
 
