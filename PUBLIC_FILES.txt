@@ -11,6 +11,7 @@ SOURCE_PROVENANCE.md
 THIRD_PARTY_NOTICES.md
 TRADEMARKS.md
 assets/branding/ai-workbench-icon-master.png
+assets/branding/ai-workbench-icon.icns
 docs/AI工具适配器开发指南.md
 docs/images/file-management.png
 docs/images/task-center.png

@@ -249,6 +249,11 @@
       "purpose": "Canonical source artwork for the AI Workbench application icon"
     },
     {
+      "path": "assets/branding/ai-workbench-icon.icns",
+      "publicationDecision": "include",
+      "purpose": "Managed macOS application icon derived from the canonical source"
+    },
+    {
       "path": "public/brand/ai-workbench-icon-512.png",
       "publicationDecision": "include",
       "purpose": "512px PWA application icon derived from the canonical source"
