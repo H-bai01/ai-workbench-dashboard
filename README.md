@@ -2,6 +2,10 @@
   <img src="public/brand/ai-workbench-icon-512.png" width="112" alt="AI 工作台总控应用图标">
 </p>
 
+<p align="center">
+  <strong>简体中文</strong> · <a href="README_EN.md">English</a>
+</p>
+
 <h1 align="center">AI 工作台总控</h1>
 
 <p align="center">
