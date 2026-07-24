@@ -1,6 +1,6 @@
 {
   "name": "ai-workbench-dashboard",
-  "version": "2.12.4",
+  "version": "2.12.5",
   "description": "AI Workbench Dashboard - an extensible local-first dashboard for AI tools including OpenClaw, Codex, and Claude Code.",
   "license": "MIT",
   "keywords": [

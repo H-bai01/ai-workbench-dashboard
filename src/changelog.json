@@ -1,6 +1,19 @@
 {
   "versions": [
     {
+      "version": "2.12.5",
+      "channel": "stable",
+      "date": "2026-07-24",
+      "tag": "全新应用图标",
+      "summary": "统一更新工作台的网页、PWA 与 macOS 应用图标",
+      "features": [
+        "采用浅银磨砂玻璃风格的 AI 工作台新图标，统一页头、favicon 和 PWA 入口",
+        "新增受管理的 macOS ICNS 资产，确保 Finder、启动台和 Dock 显示同一套图标",
+        "补齐公开文件清单、品牌资产登记与 SHA-256 校验，便于后续可追溯维护",
+        "已在正式 macOS 工作台中刷新应用外壳图标并完成实际显示复验"
+      ]
+    },
+    {
       "version": "2.12.4",
       "channel": "stable",
       "date": "2026-07-22",
