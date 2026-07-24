@@ -703,7 +703,7 @@ test('任意 Agent 名称、缺省头像和本地自定义头像在主要入口�
   await page.locator('.monitor-objects-dialog').waitFor({ state: 'visible' })
   assert.match(
     await page.locator('.monitor-source-chip').filter({ hasText: 'OpenClaw' }).innerText(),
-    /7 个Agent/,
+    /7 个\s*Agent/,
   )
   assert.equal(await page.locator('.monitor-object-row').filter({ hasText: '范围外助手' }).count(), 0)
   await page.locator('.monitor-objects-dialog .el-dialog__headerbtn').click()

@@ -2,7 +2,7 @@
   <el-dialog
     top="4vh"
     v-model="dialogVisible"
-    title="OpenClaw 版本管理"
+    :title="$t('dialogs.openclawVersions')"
     width="860px"
     :close-on-click-modal="false"
     destroy-on-close
@@ -11,7 +11,7 @@
   >
     <div class="dialog-header">
       <el-button type="primary" :icon="Refresh" :loading="syncing" @click="handleSync">
-        同步版本
+        {{ $t('dialogs.syncVersions') }}
       </el-button>
       <span v-if="lastSync" class="last-sync">上次同步：{{ formatLocalTime(lastSync) }}</span>
       <span v-else class="last-sync">尚未同步</span>

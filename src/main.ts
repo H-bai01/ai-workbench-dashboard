@@ -2,7 +2,6 @@ import './log-privacy-bootstrap'
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import ElementPlus from 'element-plus'
-import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import 'element-plus/dist/index.css'
 import 'element-plus/theme-chalk/dark/css-vars.css'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
@@ -13,6 +12,7 @@ dayjs.locale('zh-cn')
 
 import App from './App.vue'
 import router from './router'
+import { i18n } from './i18n'
 import { clearLegacyGatewayCredential } from './config/auth'
 import { loadDashboardPublicConfig } from './config/public'
 
@@ -35,9 +35,8 @@ for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
 
 app.use(pinia)
 app.use(router)
-app.use(ElementPlus, {
-  locale: zhCn,
-})
+app.use(i18n)
+app.use(ElementPlus)
 
 app.mount('#app')
 

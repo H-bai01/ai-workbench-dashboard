@@ -614,6 +614,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Monitor, Odometer, UserFilled, TrendCharts } from '@element-plus/icons-vue'
 import { useAgentStore } from '../stores/agent'
 import { formatTokenRaw, formatTokenZh, formatTokenZhWithRaw } from '../utils/tokenFormat'
@@ -630,6 +631,7 @@ import { normalizeAgentAvatarSource } from '../utils/agent-presentation.mjs'
 import type { ProjectTokenScope } from '../types/project-token-scope'
 
 const visible = defineModel<boolean>('visible', { default: false })
+const { t } = useI18n()
 const props = defineProps<{
   sourceFilter?: string | null
   projectScope?: ProjectTokenScope | null
@@ -642,8 +644,8 @@ const store = useAgentStore()
 const projectScope = computed(() => props.projectScope || null)
 const dialogTitle = computed(() => (
   projectScope.value
-    ? `${projectScope.value.appName} · ${projectScope.value.projectName} Token 明细`
-    : 'Token 消耗详情'
+    ? `${projectScope.value.appName} · ${projectScope.value.projectName} ${t('dialogs.tokenBreakdown')}`
+    : t('dialogs.tokenUsage')
 ))
 
 // 打开 dialog 时拉一次最新费用速览 + 图表数据

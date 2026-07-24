@@ -4,7 +4,7 @@
     top="4vh"
     width="min(1240px, 95vw)"
     class="session-execution-dialog"
-    :title="`${scope?.displayName || '会话'} · 执行记录`"
+    :title="`${scope?.displayName || $t('common.unknown')} · ${$t('dialogs.session')}`"
     :close-on-click-modal="true"
   >
     <div class="execution-intro">

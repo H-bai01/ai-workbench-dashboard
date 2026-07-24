@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     v-model="visible"
-    title="文件管理"
+    :title="$t('dialogs.files')"
     width="min(1420px, 96vw)"
     top="5vh"
     class="file-manager-dialog"
@@ -79,7 +79,7 @@
             <el-icon><ArrowLeft /></el-icon>
             上一级
           </el-button>
-          <div class="current-path mono">{{ currentPath || '请选择管理目录' }}</div>
+          <div class="current-path mono">{{ currentPath || $t('dialogs.selectedPath') }}</div>
           <el-button :disabled="!currentPath || directoryLoading" size="small" @click="reloadDirectory">
             <el-icon><Refresh /></el-icon>
             刷新
@@ -122,7 +122,7 @@
           </div>
 
           <div class="detail-panel">
-            <div v-if="!selected" class="empty-state">选择文件或目录后可查看和操作。</div>
+            <div v-if="!selected" class="empty-state">{{ $t('dialogs.selectEntry') }}</div>
             <template v-else>
               <div class="detail-heading">
                 <div>
@@ -147,7 +147,7 @@
                 <el-button size="small" @click="openSelected('reveal')">显示位置</el-button>
               </div>
 
-              <div v-if="contentLoading" class="empty-state preview-state">正在读取文件…</div>
+              <div v-if="contentLoading" class="empty-state preview-state">{{ $t('dialogs.readingFile') }}</div>
 
               <template v-else-if="!selected.isDir">
                 <div v-if="editing" class="editor-card">

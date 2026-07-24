@@ -2,7 +2,7 @@
   <el-dialog
     top="4vh"
     v-model="visible"
-    title="任务中心"
+    :title="$t('dialogs.tasks')"
     width="860px"
     :close-on-click-modal="true"
     class="cron-center-dialog"
@@ -344,7 +344,7 @@
     <!-- 新建任务 -->
     <el-dialog
       v-model="createVisible"
-      title="新建定时任务"
+      :title="$t('dialogs.createTask')"
       width="620px"
       append-to-body
       class="cron-create-dialog"

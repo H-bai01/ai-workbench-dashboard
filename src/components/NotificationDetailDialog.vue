@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     v-model="visible"
-    title="通知详情"
+    :title="$t('dialogs.notifications')"
     width="560px"
     class="notification-detail-dialog"
     append-to-body
@@ -24,35 +24,35 @@
       </dl>
 
       <section class="notification-detail-section">
-        <h4>通知内容</h4>
+        <h4>{{ $t('dialogs.notificationContent') }}</h4>
         <p>{{ notification.message }}</p>
       </section>
 
       <section class="notification-detail-section">
-        <h4>详细信息</h4>
-        <p>{{ notification.detail || '暂无更多详细信息' }}</p>
+        <h4>{{ $t('dialogs.detail') }}</h4>
+        <p>{{ notification.detail || $t('dialogs.noMoreDetails') }}</p>
       </section>
 
       <section v-if="notification.impact" class="notification-detail-section">
-        <h4>影响范围</h4>
+        <h4>{{ $t('dialogs.impact') }}</h4>
         <p>{{ notification.impact }}</p>
       </section>
 
       <section v-if="notification.currentResult" class="notification-detail-section">
-        <h4>当前结果</h4>
+        <h4>{{ $t('dialogs.currentResult') }}</h4>
         <p>{{ notification.currentResult }}</p>
       </section>
     </div>
 
     <template #footer>
-      <el-button @click="visible = false">关闭</el-button>
+      <el-button @click="visible = false">{{ $t('common.close') }}</el-button>
       <el-button
         v-if="notification?.retryAction"
         type="primary"
         :loading="retrying"
         @click="emit('retry', notification)"
       >
-        重试
+        {{ $t('common.retry') }}
       </el-button>
     </template>
   </el-dialog>

@@ -80,6 +80,7 @@ scripts/file-manager-config.mjs
 scripts/file-manager-config.test.mjs
 scripts/fixtures/raster-images.mjs
 scripts/generic-defaults.test.mjs
+scripts/i18n.test.mjs
 scripts/launch-dashboard.sh
 scripts/local-ai-status.mjs
 scripts/local-ai-status.test.mjs
@@ -164,6 +165,7 @@ src/components/CommandPaletteDialog.vue
 src/components/CronCenterDialog.vue
 src/components/FileManagerDialog.vue
 src/components/GatewayDoctorDialog.vue
+src/components/LanguageSwitcher.vue
 src/components/LayoutSettingsDialog.vue
 src/components/MonitorObjectCard.vue
 src/components/MonitorObjectDetailDialog.vue
@@ -183,6 +185,8 @@ src/composables/useTheme.ts
 src/config/auth.ts
 src/config/public.ts
 src/data/workflow-steps.ts
+src/i18n/index.ts
+src/i18n/messages.ts
 src/log-privacy-bootstrap.ts
 src/main.ts
 src/router/index.ts

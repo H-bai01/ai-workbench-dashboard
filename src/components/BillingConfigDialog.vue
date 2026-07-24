@@ -2,7 +2,7 @@
   <el-dialog
     top="7vh"
     v-model="visible"
-    title="计费配置"
+    :title="$t('dialogs.billing')"
     width="860px"
     :close-on-click-modal="false"
     class="billing-config-dialog"

@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     v-model="dialogVisible"
-    title="OpenClaw 技能库"
+    :title="$t('dialogs.skills')"
     width="min(1180px, 94vw)"
     :close-on-click-modal="false"
     destroy-on-close

@@ -12,9 +12,9 @@
           />
           <div class="brand-copy">
             <h1 class="brand-title">
-              <span class="brand-name">AI 工作台总控</span>
+              <span class="brand-name">{{ t('header.title') }}</span>
               <span class="brand-version">v{{ displayVersion }}</span>
-              <span v-if="isBeta" class="brand-channel">内测</span>
+              <span v-if="isBeta" class="brand-channel">{{ t('header.beta') }}</span>
             </h1>
           </div>
           <span class="brand-time">{{ currentTime }}</span>
@@ -31,19 +31,19 @@
                 @click="versionDialogVisible = true"
               >
                 <el-icon :size="13"><Box /></el-icon>
-                <span class="top-ind-label">{{ openClawUpdateAvailable ? 'OpenClaw 可更新' : 'OpenClaw 版本' }}</span>
+                <span class="top-ind-label">{{ openClawUpdateAvailable ? t('header.openclawUpdate') : t('header.openclawVersion') }}</span>
                 <span class="top-ind-value mono">{{ openClawVersionDisplay }}</span>
-                <span v-if="openClawUpdateAvailable" class="version-update-badge">更新</span>
+                <span v-if="openClawUpdateAvailable" class="version-update-badge">{{ t('header.update') }}</span>
               </button>
             </el-tooltip>
           </div>
 
           <!-- 网关健康 -->
           <div class="top-control-slot" :style="{ order: topBarControlOrder('gateway') }">
-            <el-tooltip content="诊断功能暂时停用" placement="bottom">
+            <el-tooltip :content="t('header.diagnosticsUnavailable')" placement="bottom">
               <button class="top-indicator" :class="`top-indicator-${store.healthStatus}`" @click="showSealedFeature('诊断功能')">
                 <el-icon :size="13"><component :is="healthIcon" /></el-icon>
-                <span class="top-ind-label">网关</span>
+                <span class="top-ind-label">{{ t('header.gateway') }}</span>
                 <span class="top-ind-value">{{ healthDisplay }}</span>
               </button>
             </el-tooltip>
@@ -55,23 +55,23 @@
               <template #reference>
                 <button class="top-indicator top-indicator-notif" :class="{ 'has-unread': store.unreadNotifications > 0 }">
                   <el-icon :size="13"><Bell /></el-icon>
-                  <span class="top-ind-label">通知中心</span>
-                  <span class="top-ind-value">{{ store.unreadNotifications > 0 ? `${store.unreadNotifications} 条未读` : '无新通知' }}</span>
+                  <span class="top-ind-label">{{ t('header.notifications') }}</span>
+                  <span class="top-ind-value">{{ store.unreadNotifications > 0 ? t('header.unread', { count: store.unreadNotifications }) : t('header.noNotifications') }}</span>
                   <span v-if="store.unreadNotifications > 0" class="top-notif-badge">{{ store.unreadNotifications > 9 ? '9+' : store.unreadNotifications }}</span>
                 </button>
               </template>
               <template #default>
                 <div class="notif-panel">
                   <div class="notif-header">
-                    <span>通知中心</span>
+                    <span>{{ t('header.notifications') }}</span>
                     <div class="notif-actions">
-                      <el-button link size="small" @click="store.markAllNotificationsRead()" :disabled="store.unreadNotifications === 0">全部已读</el-button>
-                      <el-button link size="small" type="danger" @click="store.clearNotifications()" :disabled="store.notifications.length === 0">清空</el-button>
+                      <el-button link size="small" @click="store.markAllNotificationsRead()" :disabled="store.unreadNotifications === 0">{{ t('header.markAllRead') }}</el-button>
+                      <el-button link size="small" type="danger" @click="store.clearNotifications()" :disabled="store.notifications.length === 0">{{ t('common.clear') }}</el-button>
                     </div>
                   </div>
                   <div v-if="store.notifications.length === 0" class="notif-empty">
                     <el-icon><BellFilled /></el-icon>
-                    暂无通知
+                    {{ t('header.emptyNotifications') }}
                   </div>
                   <div v-else class="notif-list">
                     <button
@@ -89,7 +89,7 @@
                         <div class="notif-msg">{{ n.message }}</div>
                         <div class="notif-time">{{ formatNotifTime(n.timestamp) }}</div>
                       </div>
-                      <span class="notif-open-hint">查看详情</span>
+                      <span class="notif-open-hint">{{ t('common.viewDetails') }}</span>
                     </button>
                   </div>
                 </div>
@@ -99,10 +99,10 @@
 
           <!-- Sprint 7: 全局搜索 cmd+K -->
           <div class="top-control-slot" :style="{ order: topBarControlOrder('search') }">
-            <el-tooltip content="全局搜索（⌘K）" placement="bottom">
+            <el-tooltip :content="t('header.searchTip')" placement="bottom">
               <button class="top-indicator top-indicator-search" @click="commandPaletteVisible = true">
                 <el-icon :size="13"><Search /></el-icon>
-                <span class="top-ind-label">搜索</span>
+                <span class="top-ind-label">{{ t('header.search') }}</span>
                 <kbd class="top-ind-kbd">⌘K</kbd>
               </button>
             </el-tooltip>
@@ -110,20 +110,24 @@
 
           <!-- Sprint 9: #18 主题切换（Dark/Light Theme Toggle）-->
           <div class="top-control-slot" :style="{ order: topBarControlOrder('theme') }">
-            <el-tooltip :content="isDark ? '切换亮色主题' : '切换暗色主题'" placement="bottom">
+            <el-tooltip :content="isDark ? t('header.switchLight') : t('header.switchDark')" placement="bottom">
               <button class="top-indicator top-indicator-theme" @click="toggleTheme">
                 <el-icon :size="13" class="theme-icon"><component :is="isDark ? Sunny : Moon" /></el-icon>
-                <span class="top-ind-label">{{ isDark ? '亮色' : '暗色' }}</span>
+                <span class="top-ind-label">{{ isDark ? t('header.light') : t('header.dark') }}</span>
               </button>
             </el-tooltip>
           </div>
 
+          <div class="top-control-slot top-control-slot-language">
+            <LanguageSwitcher />
+          </div>
+
           <!-- 自定义布局 -->
           <div class="top-control-slot" :style="{ order: topBarControlOrder('layout') }">
-            <el-tooltip content="自定义布局：排序页面模块 / 顶栏工具 / 功能入口" placement="bottom">
+            <el-tooltip :content="t('header.layoutTip')" placement="bottom">
               <button class="top-layout-btn" @click="layoutDialogVisible = true">
                 <el-icon :size="14"><Operation /></el-icon>
-                <span>自定义布局</span>
+                <span>{{ t('header.layout') }}</span>
               </button>
             </el-tooltip>
           </div>
@@ -138,7 +142,7 @@
     >
       <div class="scope-toolbar">
         <div class="scope-toolbar-main scope-toolbar-panel">
-          <span class="scope-control-label">时间范围：</span>
+          <span class="scope-control-label">{{ t('scope.label') }}</span>
           <el-date-picker
             v-model="tokenMiniCustomRangeDraft"
             class="token-mini-custom-range"
@@ -147,15 +151,15 @@
             unlink-panels
             clearable
             value-format="YYYY-MM-DD"
-            range-separator="至"
-            start-placeholder="起始日期"
-            end-placeholder="截止日期"
+            :range-separator="t('scope.separator')"
+            :start-placeholder="t('scope.from')"
+            :end-placeholder="t('scope.to')"
             popper-class="token-mini-date-range-popper"
             @change="setTokenMiniCustomRange"
           />
           <div class="scope-control-group token-mini-ranges" aria-label="全局时间范围">
             <button
-              v-for="opt in TOKEN_MINI_RANGES"
+              v-for="opt in localizedTokenMiniRanges"
               :key="opt.value"
               class="token-mini-chip"
               :class="{ active: tokenMiniRange === opt.value }"
@@ -167,10 +171,10 @@
             v-if="(tokenUsageSnapshotLoading || tokenUsageSnapshotServerRefreshing) && tokenUsageSnapshotReady && !tokenUsageSnapshotBlocking"
             class="usage-snapshot-refreshing"
             role="status"
-          ><i aria-hidden="true"></i>正在后台更新…</span>
+          ><i aria-hidden="true"></i>{{ t('scope.backgroundRefreshing') }}</span>
         </div>
         <div class="scope-toolbar-controls scope-toolbar-panel">
-          <span class="scope-control-label">显示内容：</span>
+          <span class="scope-control-label">{{ t('scope.display') }}</span>
           <div class="scope-control-group token-mini-metrics" aria-label="全局指标">
             <button
               class="token-mini-chip metric-chip"
@@ -183,21 +187,21 @@
               :class="{ active: tokenMiniMetricKeys.includes('cost') }"
               type="button"
               @click="toggleTokenMiniMetric('cost')"
-            >API 等价费用</button>
+            >{{ t('scope.apiCost') }}</button>
           </div>
           <button
             v-if="hasTokenMiniModelFilter"
             class="token-mini-chip clear-chip"
             type="button"
             @click="tokenMiniSelectedModels = []"
-          >全部模型</button>
+          >{{ t('scope.allModels') }}</button>
         </div>
       </div>
       <div
         class="cockpit-inner"
         :class="{ 'has-expanded-summary': modelShareExpanded || contributionExpanded }"
         v-loading="tokenUsageSnapshotBlocking"
-        element-loading-text="正在汇总完整统计…"
+        :element-loading-text="t('scope.loadingComplete')"
       >
         <article
           class="cockpit-card token-cockpit-card"
@@ -213,24 +217,24 @@
         >
           <div class="cockpit-card-header">
             <div>
-              <div class="cockpit-eyebrow">{{ tokenMiniMetricLabel }} 总览</div>
+              <div class="cockpit-eyebrow">{{ t('cockpit.overview', { metric: tokenMiniMetricLabel }) }}</div>
             </div>
             <el-icon :size="24"><Odometer /></el-icon>
           </div>
           <div class="token-kpi-row">
             <div>
-              <span>API 等价美元</span>
+              <span>{{ t('cockpit.apiUsd') }}</span>
               <strong
-                :title="`按 1 USD = ¥${USD_TO_CNY_RATE} 估算`"
+                :title="t('cockpit.rateTitle', { rate: USD_TO_CNY_RATE })"
                 :style="{ color: tokenMiniMetric === 'cost' || tokenMiniMetric === 'both' ? COST_METRIC_COLOR : undefined }"
               >{{ tokenUsageSnapshotReady ? scopedUsdText : '—' }}</strong>
             </div>
             <div>
-              <span>API 等价人民币</span>
+              <span>{{ t('cockpit.apiCny') }}</span>
               <strong :style="{ color: tokenMiniMetric === 'cost' || tokenMiniMetric === 'both' ? COST_METRIC_COLOR : undefined }">{{ tokenUsageSnapshotReady ? scopedCostText : '—' }}</strong>
             </div>
             <div>
-              <span>当前 Token</span>
+              <span>{{ t('cockpit.currentToken') }}</span>
               <strong :style="{ color: tokenMiniMetric === 'tokens' || tokenMiniMetric === 'both' ? TOKEN_METRIC_COLOR : undefined }">{{ tokenUsageSnapshotReady ? scopedTokenText : '—' }}</strong>
             </div>
           </div>
@@ -255,7 +259,7 @@
                   :class="{ active: tokenMiniMetricKeys.includes('cost') }"
                   type="button"
                   @click="toggleTokenMiniMetric('cost')"
-                >API 等价费用</button>
+                >{{ t('scope.apiCost') }}</button>
               </div>
             </div>
             <div class="token-mini-plot" ref="tokenMiniPlotEl" v-if="tokenMiniChartPoints.length > 0">
@@ -390,7 +394,7 @@
               <div
               v-if="tokenMiniChartPoints.length === 0 && !tokenMiniLoading"
               class="token-mini-chart-empty"
-            >暂无趋势数据</div>
+            >{{ t('cockpit.noTrend') }}</div>
           </div>
           <el-scrollbar
             v-if="modelShareRows.length > 0"
@@ -453,8 +457,8 @@
           >
             {{
               modelShareExpanded
-                ? `已展开 ${modelShareExpandedVisibleCount} / ${modelShareRows.length} 个模型 · 收起`
-                : `展开其余 ${modelShareHiddenCount} 个模型`
+                ? t('cockpit.modelsExpanded', { visible: modelShareExpandedVisibleCount, total: modelShareRows.length })
+                : t('cockpit.modelsRemaining', { count: modelShareHiddenCount })
             }}
           </button>
           <span v-else class="cockpit-disclosure-spacer" aria-hidden="true"></span>
@@ -463,7 +467,7 @@
         <article class="cockpit-card agent-pulse-card" ref="agentPulseCardEl">
           <div class="cockpit-card-header">
             <div>
-              <div class="cockpit-eyebrow">Agent 工作脉冲</div>
+              <div class="cockpit-eyebrow">{{ t('cockpit.agentPulse') }}</div>
               <h2>{{ selectedPulseHeadline }}</h2>
             </div>
             <div class="agent-pulse-summary">
@@ -544,7 +548,7 @@
               <div class="cockpit-eyebrow">{{ contributionEyebrow }}</div>
               <h2>{{ contributionTitle }}</h2>
             </div>
-            <button class="cockpit-link-btn" @click="openTokenDetail()">看明细</button>
+            <button class="cockpit-link-btn" @click="openTokenDetail()">{{ t('cockpit.details') }}</button>
           </div>
           <el-scrollbar
             v-if="contributionRows.length > 0"
@@ -610,8 +614,8 @@
           >
             {{
               contributionExpanded
-                ? `已展开 ${contributionExpandedVisibleCount} / ${contributionRows.length} 项 · 收起`
-                : `展开其余 ${contributionHiddenCount} 项`
+                ? t('cockpit.expanded', { visible: contributionExpandedVisibleCount, total: contributionRows.length })
+                : t('cockpit.expandRemaining', { count: contributionHiddenCount })
             }}
           </button>
           <div v-if="contributionRows.length === 0" class="contribution-empty">{{ contributionEmptyText }}</div>
@@ -655,7 +659,7 @@
             <button class="action-btn action-gpu">
               <el-icon :size="22"><Monitor /></el-icon>
               <div class="action-text">
-                <div class="action-label">GPU 显存</div>
+                <div class="action-label">{{ t('actions.gpu') }}</div>
                 <div class="action-value">{{ store.gpuVramPercentage }}%</div>
               </div>
             </button>
@@ -667,8 +671,8 @@
           <button class="action-btn" @click="fileManagerVisible = true">
             <el-icon :size="22"><Folder /></el-icon>
             <div class="action-text">
-              <div class="action-label">文件管理</div>
-              <div class="action-value">管理工作目录</div>
+              <div class="action-label">{{ t('actions.files') }}</div>
+              <div class="action-value">{{ t('actions.filesSub') }}</div>
             </div>
           </button>
         </div>
@@ -678,8 +682,8 @@
           <button class="action-btn" @click="billingDialogVisible = true">
             <el-icon :size="22"><Money /></el-icon>
             <div class="action-text">
-              <div class="action-label">计费配置</div>
-              <div class="action-value">按模型定价</div>
+              <div class="action-label">{{ t('actions.billing') }}</div>
+              <div class="action-value">{{ t('actions.billingSub') }}</div>
             </div>
           </button>
         </div>
@@ -689,8 +693,8 @@
           <button class="action-btn" @click="openToolManagement('skills')">
             <el-icon :size="22"><Briefcase /></el-icon>
             <div class="action-text">
-              <div class="action-label">AI 工具能力</div>
-              <div class="action-value">按能力管理</div>
+              <div class="action-label">{{ t('actions.capabilities') }}</div>
+              <div class="action-value">{{ t('actions.capabilitiesSub') }}</div>
             </div>
           </button>
         </div>
@@ -700,8 +704,8 @@
           <button class="action-btn" @click="openToolManagement('nativeUi')">
             <el-icon :size="22"><Link /></el-icon>
             <div class="action-text">
-              <div class="action-label">原生控制台</div>
-              <div class="action-value">按工具打开</div>
+              <div class="action-label">{{ t('actions.console') }}</div>
+              <div class="action-value">{{ t('actions.consoleSub') }}</div>
             </div>
           </button>
         </div>
@@ -711,7 +715,7 @@
           <button class="action-btn" @click="openToolManagement('tasks')">
             <el-icon :size="22"><Grid /></el-icon>
             <div class="action-text">
-              <div class="action-label">项目与任务</div>
+              <div class="action-label">{{ t('actions.projects') }}</div>
               <div class="action-value">{{ projectSummary }}</div>
             </div>
           </button>
@@ -722,8 +726,8 @@
           <button class="action-btn" @click="openToolManagement('automation')">
             <el-icon :size="22"><Timer /></el-icon>
             <div class="action-text">
-              <div class="action-label">自动任务</div>
-              <div class="action-value">按工具管理</div>
+              <div class="action-label">{{ t('actions.automation') }}</div>
+              <div class="action-value">{{ t('actions.automationSub') }}</div>
             </div>
           </button>
         </div>
@@ -771,7 +775,7 @@
 
         <div v-else class="workflow-empty-state">
           <el-icon :size="28" class="workflow-empty-icon"><VideoPause /></el-icon>
-          <span class="workflow-empty-text">当前无任务执行</span>
+          <span class="workflow-empty-text">{{ t('sections.noCurrentTask') }}</span>
         </div>
       </el-card>
     </div>
@@ -788,12 +792,12 @@
       <div class="module-card-shell">
         <button class="module-card-toggle" type="button" @click="toggleTimelineCollapsed()">
           <span class="module-card-title">
-            <span class="module-card-eyebrow">运行记录</span>
-            <strong>AI 工具活动时间线</strong>
+            <span class="module-card-eyebrow">{{ t('sections.activityEyebrow') }}</span>
+            <strong>{{ t('sections.activityTitle') }}</strong>
           </span>
           <span class="module-card-hints">
-            <span>全部工具</span>
-            <span>按会话展开</span>
+            <span>{{ t('sections.allTools') }}</span>
+            <span>{{ t('sections.bySession') }}</span>
           </span>
           <el-icon class="module-card-arrow" :class="{ expanded: !layoutConfig.timelineCollapsed }"><ArrowRight /></el-icon>
         </button>
@@ -817,12 +821,12 @@
       <div class="module-card-shell">
         <button class="module-card-toggle" type="button" @click="toggleChangelogCollapsed()">
           <span class="module-card-title">
-            <span class="module-card-eyebrow">版本体系</span>
-            <strong>版本迭代说明</strong>
+            <span class="module-card-eyebrow">{{ t('sections.versionsEyebrow') }}</span>
+            <strong>{{ t('sections.versionsTitle') }}</strong>
           </span>
           <span class="module-card-hints">
             <span>Changelog</span>
-            <span>版本回退</span>
+            <span>{{ t('sections.rollback') }}</span>
             <span class="module-card-badge">v{{ APP_VERSION }}</span>
           </span>
           <el-icon class="module-card-arrow" :class="{ expanded: !layoutConfig.changelogCollapsed }"><ArrowRight /></el-icon>
@@ -840,15 +844,15 @@
       <div class="task-board-shell" :class="{ expanded: taskBoardExpanded }">
         <button class="task-board-toggle" type="button" @click="taskBoardExpanded = !taskBoardExpanded">
           <span class="task-board-title">
-            <span class="task-board-eyebrow">任务看板</span>
-            <strong>{{ taskBoardExpanded ? '收起 AI 工具任务区' : '展开 AI 工具任务区' }}</strong>
+            <span class="task-board-eyebrow">{{ t('sections.boardEyebrow') }}</span>
+            <strong>{{ taskBoardExpanded ? t('sections.boardCollapse') : t('sections.boardExpand') }}</strong>
           </span>
           <span class="task-board-summary">
-            <span>总计 {{ monitorTotalObjectCount }}</span>
-            <span>运行 {{ monitorStatusCount('running') }}</span>
-            <span>空闲 {{ monitorStatusCount('idle') }}</span>
-            <span>已终止 {{ monitorStatusCount('aborted') }}</span>
-            <span>错误 {{ monitorStatusCount('error') }}</span>
+            <span>{{ t('sections.countTotal', { count: monitorTotalObjectCount }) }}</span>
+            <span>{{ t('sections.countRunning', { count: monitorStatusCount('running') }) }}</span>
+            <span>{{ t('sections.countIdle', { count: monitorStatusCount('idle') }) }}</span>
+            <span>{{ t('sections.countStopped', { count: monitorStatusCount('aborted') }) }}</span>
+            <span>{{ t('sections.countErrors', { count: monitorStatusCount('error') }) }}</span>
           </span>
           <el-icon class="task-board-arrow" :class="{ expanded: taskBoardExpanded }"><ArrowRight /></el-icon>
         </button>
@@ -962,13 +966,13 @@
     >
       <template #header>
         <div class="summary-range-dialog-head">
-          <h2>摘要显示范围</h2>
-          <p>只影响底部 Token 和费用两张卡片，不跟随页面上方时间范围。</p>
+          <h2>{{ t('summary.title') }}</h2>
+          <p>{{ t('summary.description') }}</p>
         </div>
       </template>
-      <div class="summary-range-options" aria-label="摘要显示范围">
+      <div class="summary-range-options" :aria-label="t('summary.aria')">
         <button
-          v-for="option in SUMMARY_USAGE_RANGES"
+          v-for="option in localizedSummaryUsageRanges"
           :key="option.value"
           class="token-mini-chip summary-range-option"
           :class="{ active: summaryUsageRange === option.value }"
@@ -1189,6 +1193,8 @@ import FileManagerDialog from '../components/FileManagerDialog.vue'
 import NotificationDetailDialog from '../components/NotificationDetailDialog.vue'
 import ChangelogPanel from '../components/ChangelogPanel.vue'
 import QuickMsgFab from '../components/QuickMsgFab.vue'
+import LanguageSwitcher from '../components/LanguageSwitcher.vue'
+import { useI18n } from 'vue-i18n'
 import { useLayoutSettings } from '../composables/useLayoutSettings'
 import { useTheme } from '../composables/useTheme'
 import { type WorkflowData } from '../data/workflow-steps'
@@ -1237,6 +1243,8 @@ import {
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
+const { t, locale } = useI18n()
+
 // App version from package.json (injected by Vite define)
 const APP_VERSION: string = __APP_VERSION__
 // 版本号主体（去掉 -beta 后缀，横排显示）+ 是否内测版（单独标签展示）
@@ -1255,6 +1263,12 @@ let clockTimer: ReturnType<typeof setInterval> | null = null
 
 function updateClock(): void {
   const now = new Date()
+  if (locale.value === 'en') {
+    currentTime.value = new Intl.DateTimeFormat('en', {
+      year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(now)
+    return
+  }
   const Y = now.getFullYear()
   const M = String(now.getMonth() + 1).padStart(2, '0')
   const D = String(now.getDate()).padStart(2, '0')
@@ -1262,6 +1276,8 @@ function updateClock(): void {
   const m = String(now.getMinutes()).padStart(2, '0')
   currentTime.value = `${Y}年${M}月${D}日 ${h}:${m}`
 }
+
+watch(locale, updateClock)
 
 // Workflow steps data (REC-031: 从 workflow-progress.json 轮询)
 const WORKFLOW_POLL_INTERVAL = 10000
@@ -1493,7 +1509,7 @@ const layoutDialogVisible = ref(false)
 
 // 项目看板
 const projectBoardVisible = ref(false)
-const projectSummary = ref('按工具查看')
+const projectSummary = computed(() => t('actions.projectsSub'))
 
 // Cron 任务中心
 const cronCenterVisible = ref(false)
@@ -1699,6 +1715,15 @@ const TOKEN_MINI_RANGES: Array<{ value: TokenMiniRangeValue; label: string }> = 
   { value: 'lastMonth', label: '上个月' },
   { value: 'all', label: '全部' },
 ]
+const localizedTokenMiniRanges = computed(() => [
+  { value: 'today' as const, label: t('scope.today') },
+  { value: '3d' as const, label: t('scope.days3') },
+  { value: '7d' as const, label: t('scope.days7') },
+  { value: '30d' as const, label: t('scope.days30') },
+  { value: 'month' as const, label: t('scope.month') },
+  { value: 'lastMonth' as const, label: t('scope.previousMonth') },
+  { value: 'all' as const, label: t('scope.all') },
+])
 const DEFAULT_TOKEN_MINI_RANGE: TokenMiniRangeValue = 'today'
 const TOKEN_MINI_RANGE_PREFERENCE_KEY = 'ai_workbench_dashboard_token_range_v1'
 const SUMMARY_USAGE_RANGES: Array<{ value: SummaryUsageRangeValue; label: string }> = [
@@ -1710,6 +1735,15 @@ const SUMMARY_USAGE_RANGES: Array<{ value: SummaryUsageRangeValue; label: string
   { value: 'lastMonth', label: '上个月' },
   { value: 'all', label: '全部' },
 ]
+const localizedSummaryUsageRanges = computed(() => [
+  { value: 'today' as const, label: t('scope.today') },
+  { value: '3d' as const, label: t('summary.recent3') },
+  { value: '7d' as const, label: t('summary.recent7') },
+  { value: '30d' as const, label: t('summary.recent30') },
+  { value: 'month' as const, label: t('scope.month') },
+  { value: 'lastMonth' as const, label: t('scope.previousMonth') },
+  { value: 'all' as const, label: t('scope.all') },
+])
 const DEFAULT_SUMMARY_USAGE_RANGE: SummaryUsageRangeValue = 'month'
 const SUMMARY_USAGE_RANGE_PREFERENCE_KEY = 'ai_workbench_dashboard_summary_range_v1'
 const TOKEN_USAGE_PREWARM_INTERVAL_MS = 5 * 60 * 1000
@@ -2609,8 +2643,8 @@ interface TokenMiniPoint {
 }
 
 const tokenMiniMetricLabel = computed(() => {
-  if (tokenMiniMetric.value === 'both') return 'Token + API 等价费用'
-  return tokenMiniMetric.value === 'tokens' ? 'Token' : 'API 等价费用'
+  if (tokenMiniMetric.value === 'both') return `Token + ${t('scope.apiCost')}`
+  return tokenMiniMetric.value === 'tokens' ? 'Token' : t('scope.apiCost')
 })
 const tokenMiniRangeLabel = computed(() => {
   const publishedRange = tokenUsageSnapshotRange.value
@@ -2618,11 +2652,11 @@ const tokenMiniRangeLabel = computed(() => {
     const range = tokenUsageSnapshotCustomRange.value
     return range ? `${formatShortDate(range[0])}-${formatShortDate(range[1])}` : '自定义'
   }
-  return TOKEN_MINI_RANGES.find((opt) => opt.value === publishedRange)?.label || '全部'
+  return localizedTokenMiniRanges.value.find((opt) => opt.value === publishedRange)?.label || t('scope.all')
 })
-const contributionEyebrow = computed(() => tokenMiniMetric.value === 'cost' ? 'API 等价费用排行' : '贡献排行')
-const contributionTitle = computed(() => tokenMiniMetric.value === 'cost' ? '谁最能花钱' : '谁最能干')
-const contributionEmptyText = computed(() => tokenMiniMetric.value === 'cost' ? '暂无费用贡献数据' : '暂无 Token 贡献数据')
+const contributionEyebrow = computed(() => tokenMiniMetric.value === 'cost' ? t('cockpit.costRanking') : t('cockpit.contribution'))
+const contributionTitle = computed(() => tokenMiniMetric.value === 'cost' ? t('cockpit.spending') : t('cockpit.capable'))
+const contributionEmptyText = computed(() => tokenMiniMetric.value === 'cost' ? t('cockpit.noCostContribution') : t('cockpit.noTokenContribution'))
 const contributionBarColor = computed(() => (
   tokenMiniMetric.value === 'cost' ? COST_METRIC_COLOR : TOKEN_METRIC_COLOR
 ))
@@ -2945,7 +2979,7 @@ const summaryUsageTotals = computed<UsageDatum>(() => summaryUsageTimeline.value
 ))
 const summaryUsageRangeLabel = computed(() => {
   const range = summaryUsageReady.value ? summaryUsagePublishedRange.value : summaryUsageRange.value
-  return SUMMARY_USAGE_RANGES.find((option) => option.value === range)?.label || '本月'
+  return localizedSummaryUsageRanges.value.find((option) => option.value === range)?.label || t('scope.month')
 })
 const summaryUsageTokenText = computed(() => formatTokenZh(summaryUsageTotals.value.tokens))
 const summaryUsageCostText = computed(() => formatCostScope(
@@ -3185,12 +3219,15 @@ function sumPulseRows(rows: PulseRow[]): UsageDatum {
 }
 
 function makePulseApp(tool: AiToolDescriptor, rows: PulseRow[], usage: UsageDatum, headline?: string): PulseApp {
+  const countText = tool.id === 'openclaw'
+    ? t('cockpit.agents', { count: rows.length })
+    : t('cockpit.projects', { count: rows.length })
   return {
     id: tool.id,
     name: tool.name,
     iconSrc: tool.iconSrc,
-    headline: headline || `${rows.length} 个${tool.objectLabel}`,
-    countText: `${rows.length} 个${tool.objectLabel}`,
+    headline: headline || countText,
+    countText,
     metricText: usageMetricText(usage),
     usage,
     rows,
@@ -3221,7 +3258,7 @@ const pulseApps = computed<PulseApp[]>(() => {
         ? agentPulseRows.value
         : localAppRows(localAiUsageAppMap.value.get(tool.id), tool.id)
       const headline = tool.id === 'openclaw'
-        ? `${rows.filter((row) => row.agent?.status === 'running').length} 个正在干活`
+        ? t('cockpit.activeObjects', { count: rows.filter((row) => row.agent?.status === 'running').length })
         : undefined
       return makePulseApp(tool, rows, sumPulseRows(rows), headline)
     })
@@ -3247,11 +3284,11 @@ const selectedPulseRows = computed(() => {
 })
 const pulseStatusFilterLabel = computed(() => {
   const labels: Record<PulseStatusFilter, string> = {
-    all: '全部对象',
-    running: '运行中对象',
-    idle: '空闲对象',
-    aborted: '已终止对象',
-    error: '错误对象',
+    all: t('common.all'),
+    running: t('status.running'),
+    idle: t('status.idle'),
+    aborted: t('status.stopped'),
+    error: t('status.error'),
   }
   return labels[pulseStatusFilter.value]
 })
@@ -3259,13 +3296,13 @@ const showPulseStatusFilter = computed(() => pulseStatusFilter.value !== 'all')
 const selectedPulseUsage = computed(() => sumPulseRows(selectedPulseRows.value))
 const selectedPulseHeadline = computed(() => (
   showPulseStatusFilter.value
-    ? `${selectedPulseRows.value.length} 个${pulseStatusFilterLabel.value}`
-    : selectedPulseApp.value?.headline || '暂无数据'
+    ? `${pulseStatusFilterLabel.value} · ${selectedPulseRows.value.length}`
+    : selectedPulseApp.value?.headline || t('cockpit.noData')
 ))
 const selectedPulseCountText = computed(() => (
   showPulseStatusFilter.value
-    ? `${selectedPulseRows.value.length} 个结果`
-    : selectedPulseApp.value?.countText || '0 个对象'
+    ? t('cockpit.results', { count: selectedPulseRows.value.length })
+    : selectedPulseApp.value?.countText || t('cockpit.objects', { count: 0 })
 ))
 const selectedPulseMetricText = computed(() => (
   showPulseStatusFilter.value
@@ -3273,9 +3310,9 @@ const selectedPulseMetricText = computed(() => (
     : selectedPulseApp.value?.metricText || '0'
 ))
 const selectedPulseEmptyText = computed(() => {
-  if (localAiUsageLoading.value && selectedPulseAppId.value !== 'openclaw') return '正在读取本地记录…'
-  if (showPulseStatusFilter.value) return `暂无${pulseStatusFilterLabel.value}`
-  return selectedPulseAppId.value === 'openclaw' ? '暂无 OpenClaw Agent' : '暂无本地记录'
+  if (localAiUsageLoading.value && selectedPulseAppId.value !== 'openclaw') return t('cockpit.loadingLocal')
+  if (showPulseStatusFilter.value) return t('cockpit.noData')
+  return selectedPulseAppId.value === 'openclaw' ? t('cockpit.noOpenClawAgents') : t('cockpit.noLocalRecords')
 })
 
 const DEFAULT_MONITOR_SOURCE_IDS: PulseAppId[] = DEFAULT_AI_TOOLS.map((tool) => tool.id)
@@ -3744,7 +3781,7 @@ function handleToolManagementAction(toolId: string, action: AiToolManagementActi
 const statsCardsRaw = computed(() => [
   {
     id: 'total',
-    label: '总计',
+    label: t('status.total'),
     value: tokenUsageSnapshotReady.value ? monitorTotalObjectCount.value : '…',
     icon: Odometer,
     iconClass: 'icon-blue',
@@ -3753,7 +3790,7 @@ const statsCardsRaw = computed(() => [
   },
   {
     id: 'running',
-    label: '运行中',
+    label: t('status.running'),
     value: tokenUsageSnapshotReady.value ? monitorStatusCount('running') : '…',
     icon: VideoPlay,
     iconClass: 'icon-yellow',
@@ -3762,7 +3799,7 @@ const statsCardsRaw = computed(() => [
   },
   {
     id: 'idle',
-    label: '空闲',
+    label: t('status.idle'),
     value: tokenUsageSnapshotReady.value ? monitorStatusCount('idle') : '…',
     icon: VideoPause,
     iconClass: 'icon-green',
@@ -3771,7 +3808,7 @@ const statsCardsRaw = computed(() => [
   },
   {
     id: 'aborted',
-    label: '已终止',
+    label: t('status.stopped'),
     value: tokenUsageSnapshotReady.value ? monitorStatusCount('aborted') : '…',
     icon: CircleClose,
     iconClass: 'icon-gray',
@@ -3780,7 +3817,7 @@ const statsCardsRaw = computed(() => [
   },
   {
     id: 'error',
-    label: '错误',
+    label: t('status.error'),
     value: tokenUsageSnapshotReady.value ? monitorStatusCount('error') : '…',
     icon: CircleClose,
     iconClass: 'icon-red',
@@ -3789,7 +3826,7 @@ const statsCardsRaw = computed(() => [
   },
   {
     id: 'uptime',
-    label: '本次运行时间',
+    label: t('status.uptime'),
     value: store.formatUptime(store.uptimeMs),
     icon: Monitor,
     iconClass: 'icon-purple',
@@ -3797,17 +3834,17 @@ const statsCardsRaw = computed(() => [
   },
   {
     id: 'tokens',
-    label: `${summaryUsageRangeLabel.value} Token`,
-    value: summaryUsageReady.value ? summaryUsageTokenText.value : '汇总中',
-    title: summaryUsageLoading.value ? '摘要正在更新' : '点击修改摘要时间范围',
+    label: t('status.rangeToken', { range: summaryUsageRangeLabel.value }),
+    value: summaryUsageReady.value ? summaryUsageTokenText.value : t('status.compiling'),
+    title: summaryUsageLoading.value ? t('status.summaryUpdating') : t('status.changeSummaryRange'),
     icon: Odometer, iconClass: 'icon-orange', class: 'stat-tokens stat-clickable',
     onClick: () => { summaryUsageDialogVisible.value = true },
   },
   {
     id: 'cost',
-    label: `${summaryUsageRangeLabel.value}费用`,
-    value: summaryUsageReady.value ? summaryUsageCostText.value : '汇总中',
-    title: summaryUsageLoading.value ? '摘要正在更新' : '点击修改摘要时间范围',
+    label: t('status.rangeCost', { range: summaryUsageRangeLabel.value }),
+    value: summaryUsageReady.value ? summaryUsageCostText.value : t('status.compiling'),
+    title: summaryUsageLoading.value ? t('status.summaryUpdating') : t('status.changeSummaryRange'),
     icon: Money, iconClass: 'icon-green', class: 'stat-cost stat-clickable',
     onClick: () => { summaryUsageDialogVisible.value = true },
   },
@@ -3823,11 +3860,11 @@ const statsCards = computed(() => {
 // Health
 const healthDisplay = computed(() => {
   switch (store.healthStatus) {
-    case 'healthy': return '正常'
-    case 'degraded': return '降级'
-    case 'unhealthy': return '异常'
-    case 'unknown': return '未知'
-    default: return '检查中...'
+    case 'healthy': return t('status.healthy')
+    case 'degraded': return t('status.degraded')
+    case 'unhealthy': return t('status.unhealthy')
+    case 'unknown': return t('status.unknown')
+    default: return t('status.checking')
   }
 })
 const healthIcon = computed(() => {

@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     v-model="visible"
-    title="OpenClaw 项目看板"
+    :title="$t('dialogs.projects')"
     width="92vw"
     top="4vh"
     :close-on-click-modal="true"

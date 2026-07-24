@@ -10,7 +10,7 @@
               ref="inputRef"
               v-model="query"
               class="palette-input"
-              placeholder="搜索功能、AI 工具对象、项目、会话和历史消息..."
+              :placeholder="$t('dialogs.searchPlaceholder')"
               @input="onInput"
             />
             <span v-if="loading" class="palette-spinner" />
@@ -34,7 +34,7 @@
             <template v-if="query">
               <!-- Actions section -->
               <div v-if="matchedActions.length" class="palette-section">
-                <div class="palette-section-title">功能</div>
+                <div class="palette-section-title">{{ $t('dialogs.functions') }}</div>
                 <div
                   v-for="(act, i) in matchedActions"
                   :key="act.key"

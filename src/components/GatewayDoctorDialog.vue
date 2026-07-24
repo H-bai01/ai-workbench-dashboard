@@ -2,7 +2,7 @@
   <el-dialog
     top="4vh"
     v-model="dialogVisible"
-    title="网关诊断修复"
+    :title="$t('dialogs.gateway')"
     width="860px"
     :close-on-click-modal="false"
     destroy-on-close

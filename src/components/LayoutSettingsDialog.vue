@@ -2,7 +2,7 @@
   <el-dialog
     top="4vh"
     v-model="visible"
-    title="自定义布局"
+    :title="$t('dialogs.layout')"
     width="860px"
     :close-on-click-modal="true"
     class="layout-settings-dialog"

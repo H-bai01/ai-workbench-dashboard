@@ -31,11 +31,14 @@ test('活动时间线读取全部受支持来源的只读会话索引', () => {
 test('全局搜索直接消费通用监控对象而不是只认识 Agent', () => {
   const dashboard = read('src/views/Dashboard.vue')
   const palette = read('src/components/CommandPaletteDialog.vue')
+  const messages = read('src/i18n/messages.ts')
   assert.match(dashboard, /:monitor-objects="monitorAllRows"/)
   assert.match(palette, /monitorObjectResults/)
   assert.match(palette, /open-monitor-object/)
   assert.match(palette, /AI 工具活动时间线/)
-  assert.match(palette, /搜索功能、AI 工具对象、项目、会话和历史消息/)
+  assert.match(palette, /dialogs\.searchPlaceholder/)
+  assert.match(messages, /搜索功能、AI 工具对象、项目、会话和历史消息/)
+  assert.match(messages, /Search features, AI tool objects, projects, sessions, and messages/)
 })
 
 test('首页概览只有内容超出时才接管滚轮', () => {

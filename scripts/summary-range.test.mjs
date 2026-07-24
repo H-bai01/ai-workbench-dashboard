@@ -29,11 +29,11 @@ test('两张摘要卡片使用独立完整统计且点击可修改范围', () =>
   assert.match(dashboard, /async function refreshSummaryUsage\(\)/)
   assert.match(dashboard, /mergeUsageTimelines\(openClawTimeline, localTimeline\)/)
   assert.match(dashboard, /summaryUsagePublishedRange\.value = range/)
-  assert.match(dashboard, /label: `\$\{summaryUsageRangeLabel\.value\} Token`/)
-  assert.match(dashboard, /value: summaryUsageReady\.value \? summaryUsageTokenText\.value : '汇总中'/)
-  assert.match(dashboard, /value: summaryUsageReady\.value \? summaryUsageCostText\.value : '汇总中'/)
+  assert.match(dashboard, /label: t\('status\.rangeToken', \{ range: summaryUsageRangeLabel\.value \}\)/)
+  assert.match(dashboard, /value: summaryUsageReady\.value \? summaryUsageTokenText\.value : t\('status\.compiling'\)/)
+  assert.match(dashboard, /value: summaryUsageReady\.value \? summaryUsageCostText\.value : t\('status\.compiling'\)/)
   assert.match(dashboard, /summaryUsageDialogVisible\.value = true/)
-  assert.match(dashboard, /只影响底部 Token 和费用两张卡片，不跟随页面上方时间范围。/)
+  assert.match(dashboard, /t\('summary\.description'\)/)
 })
 
 test('所有已注册 AI 工具统一只统计当前时间范围内有活动的对象', () => {

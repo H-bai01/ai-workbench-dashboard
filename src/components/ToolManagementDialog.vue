@@ -10,7 +10,7 @@
       <div class="tool-management-head">
         <div>
           <span>统一能力入口</span>
-          <h2>{{ focusedAction?.label || 'AI 工具管理' }}</h2>
+          <h2>{{ focusedAction?.label || $t('dialogs.toolManagement') }}</h2>
         </div>
         <p>{{ focusedAction?.description || '每个工具只显示自身真实支持的功能。' }}</p>
       </div>
