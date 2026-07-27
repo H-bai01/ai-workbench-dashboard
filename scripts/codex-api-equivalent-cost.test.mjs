@@ -16,6 +16,7 @@ let calculateUsageCostWithBilling
 let calculateUsageCostBreakdownWithBilling
 let observationPriceConfigured
 let resolveBillingConfig
+let buildLocalAiUsageResult
 let serviceServer
 const isolatedKeys = [
   'HOME',
@@ -41,6 +42,7 @@ before(async () => {
   calculateUsageCostBreakdownWithBilling = service.calculateUsageCostBreakdownWithBilling
   observationPriceConfigured = service.observationPriceConfigured
   resolveBillingConfig = service.resolveBillingConfig
+  buildLocalAiUsageResult = service.buildLocalAiUsageResult
   serviceServer = service.server
 })
 
@@ -326,6 +328,51 @@ test('存在无法识别的模型时接口直接报错', async () => {
     assert.equal(payload.error, '模型识别失败：unknown-model')
   } finally {
     fs.rmSync(unknownFile, { force: true })
+  }
+})
+
+test('运行中同步到新模型后，同一次扫描会用新目录重新计算成功', async () => {
+  const sessionsDir = path.join(tempHome, '.codex', 'sessions', '2026', '07', '14')
+  const runtimeFile = path.join(sessionsDir, 'runtime-catalog-model.jsonl')
+  const timestamp = new Date().toISOString()
+  fs.writeFileSync(runtimeFile, `${[
+    { timestamp, type: 'session_meta', payload: { id: 'runtime-catalog-model', cwd: tempHome, model: 'runtime-model-2027' } },
+    { timestamp, type: 'event_msg', payload: { type: 'token_count', info: { last_token_usage: { input_tokens: 1_000_000, output_tokens: 500_000, total_tokens: 1_500_000 } } } },
+  ].map(row => JSON.stringify(row)).join('\n')}\n`)
+  let refreshCount = 0
+  try {
+    const result = await buildLocalAiUsageResult({
+      startMs: Date.now() - 86_400_000,
+      endMs: Date.now() + 1_000,
+      all: false,
+      granularity: 'day',
+    }, configWithGpt56(), {
+      async refreshBillingConfig(modelIds) {
+        refreshCount += 1
+        assert.ok(modelIds.includes('runtime-model-2027'))
+        return mergeBillingConfigWithDefaults(configWithGpt56(), {
+          models: {
+            'runtime-model-2027': {
+              mode: 'per_token',
+              inputPriceCNYPerMillion: 10,
+              outputPriceCNYPerMillion: 20,
+            },
+            'gpt-5.5': {
+              mode: 'per_token',
+              inputPriceCNYPerMillion: 36,
+              outputPriceCNYPerMillion: 216,
+              cacheReadPriceCNYPerMillion: 3.6,
+            },
+          },
+        })
+      },
+    })
+    const codex = result.apps.find(app => app.id === 'codex')
+    assert.equal(refreshCount, 1)
+    assert.equal(codex.byModel['runtime-model-2027'].priceStatus, 'configured')
+    assert.equal(codex.byModel['runtime-model-2027'].cost, 20)
+  } finally {
+    fs.rmSync(runtimeFile, { force: true })
   }
 })
 

@@ -83,6 +83,12 @@ import {
 } from './local-ai-status.mjs'
 import { createSessionObservationStore } from './session-observation.mjs'
 import { GPT56_BILLING_MODELS, mergeBillingConfigWithDefaults, mergePriceStatus } from './billing-config.mjs'
+import {
+  MODEL_CATALOG_REFRESH_MS,
+  createAnthropicOfficialCatalogAdapter,
+  createModelPriceCatalogStore,
+  createOpenAiOfficialCatalogAdapter,
+} from './model-price-catalog.mjs'
 import { installPrivacyConsole, installProcessErrorPrivacy } from '../src/utils/log-privacy.mjs'
 import { createOpenClawUpdateStatus } from '../src/utils/openclaw-version.mjs'
 import {
@@ -128,6 +134,13 @@ const DASHBOARD_DATA_ROOT = path.resolve(expandUserPath(
   process.env.OPENCLAW_DASHBOARD_DATA_ROOT || path.join(DASHBOARD_ROOT, 'data'),
 ))
 const UPLOADS_ROOT = path.join(DASHBOARD_DATA_ROOT, 'uploads')
+const MODEL_PRICE_CATALOG_STORE = createModelPriceCatalogStore({
+  cachePath: path.join(DASHBOARD_DATA_ROOT, 'model-price-catalog.json'),
+  adapters: [
+    createAnthropicOfficialCatalogAdapter(),
+    createOpenAiOfficialCatalogAdapter(),
+  ],
+})
 
 function expandUserPath(value) {
   const text = String(value || '').trim()
@@ -2810,17 +2823,22 @@ export function observationPriceConfigured(modelId, usage, billingConfig) {
 }
 
 function assertUsageModelsConfigured(entries) {
+  const unresolved = unresolvedUsageModels(entries)
+  if (unresolved.length === 0) return
+  const models = unresolved.join('、')
+  const error = new Error(`模型识别失败：${models}`)
+  error.statusCode = 422
+  throw error
+}
+
+function unresolvedUsageModels(entries) {
   const unresolved = new Set()
   for (const [modelId, usage] of entries || []) {
     if (!hasUsageValue(usage)) continue
     if (usage?.priceStatus === 'configured') continue
     unresolved.add(normalizeModelId(modelId))
   }
-  if (unresolved.size === 0) return
-  const models = [...unresolved].sort((a, b) => a.localeCompare(b)).join('、')
-  const error = new Error(`模型识别失败：${models}`)
-  error.statusCode = 422
-  throw error
+  return [...unresolved].sort((a, b) => a.localeCompare(b))
 }
 
 function enrichObservationUsage(summary, billingConfig, timeMs = Date.now()) {
@@ -3403,7 +3421,7 @@ async function collectClaudeCodeUsage(range, billingConfig) {
   return finalizeLocalApp(app)
 }
 
-async function buildLocalAiUsageResult(range, billingConfig) {
+export async function buildLocalAiUsageResult(range, billingConfig, options = {}) {
     const apps = await Promise.all([
       collectCodexUsage(range, billingConfig),
       collectClaudeCodeUsage(range, billingConfig),
@@ -3450,7 +3468,26 @@ async function buildLocalAiUsageResult(range, billingConfig) {
       totals,
       updatedAt: new Date().toISOString(),
     }
-    assertUsageModelsConfigured(result.apps.flatMap((app) => Object.entries(app.byModel || {})))
+    const modelEntries = result.apps.flatMap((app) => Object.entries(app.byModel || {}))
+    const unresolved = unresolvedUsageModels(modelEntries)
+    if (
+      unresolved.length > 0
+      && !options.catalogRetried
+      && typeof options.refreshBillingConfig === 'function'
+    ) {
+      try {
+        const refreshedConfig = await options.refreshBillingConfig(unresolved)
+        if (refreshedConfig) {
+          return buildLocalAiUsageResult(range, refreshedConfig, {
+            ...options,
+            catalogRetried: true,
+          })
+        }
+      } catch {
+        // 官方目录不可用或返回无效数据时，沿用原有严格报错，不猜测价格。
+      }
+    }
+    assertUsageModelsConfigured(modelEntries)
     return result
 }
 
@@ -3466,7 +3503,7 @@ function localAiUsageResponse(result, { state, refreshing = false, refreshFailed
   }
 }
 
-function scheduleLocalAiUsageRefresh(cacheKey, range, billingConfig) {
+function scheduleLocalAiUsageRefresh(cacheKey, range, billingConfig, options = {}) {
   if (localAiUsageInFlight.has(cacheKey)) return localAiUsageInFlight.get(cacheKey)
 
   const generation = localAiUsageCacheGeneration
@@ -3474,7 +3511,7 @@ function scheduleLocalAiUsageRefresh(cacheKey, range, billingConfig) {
     .catch(() => undefined)
     .then(async () => {
       try {
-        const result = await buildLocalAiUsageResult(range, billingConfig)
+        const result = await buildLocalAiUsageResult(range, billingConfig, options)
         if (generation === localAiUsageCacheGeneration) {
           localAiUsageCache.delete(cacheKey)
           localAiUsageCache.set(cacheKey, { at: Date.now(), result })
@@ -3521,7 +3558,7 @@ async function collectLocalAiUsage(range, billingConfig, options = {}) {
       && (now - failedAt) < LOCAL_AI_USAGE_REFRESH_FAILURE_COOLDOWN_MS
     if (!refreshFailed) {
       if (options.forceRefresh) localAiUsageRefreshFailures.delete(cacheKey)
-      void scheduleLocalAiUsageRefresh(cacheKey, range, billingConfig).catch(() => undefined)
+      void scheduleLocalAiUsageRefresh(cacheKey, range, billingConfig, options).catch(() => undefined)
     }
     return localAiUsageResponse(cached.result, {
       state: 'stale',
@@ -3531,7 +3568,7 @@ async function collectLocalAiUsage(range, billingConfig, options = {}) {
     })
   }
 
-  const result = await scheduleLocalAiUsageRefresh(cacheKey, range, billingConfig)
+  const result = await scheduleLocalAiUsageRefresh(cacheKey, range, billingConfig, options)
   return localAiUsageResponse(result, { state: 'fresh' })
 }
 
@@ -7046,6 +7083,22 @@ export const server = http.createServer(async (req, res) => {
     },
   }
 
+  // 每次读取都合并当前内存中的官方目录。这样后台同步到新模型后，下一次
+  // 计费即可使用，不依赖服务重启；现有长上下文等本地规则继续保留。
+  const readBillingDefaults = () => {
+    const defaults = {
+      ...BILLING_DEFAULTS,
+      models: { ...BILLING_DEFAULTS.models },
+    }
+    for (const [modelId, catalogConfig] of Object.entries(MODEL_PRICE_CATALOG_STORE.getBillingModels())) {
+      defaults.models[modelId] = {
+        ...(defaults.models[modelId] || {}),
+        ...catalogConfig,
+      }
+    }
+    return defaults
+  }
+
   const readEffectiveBillingConfig = () => {
     let savedConfig = null
     try {
@@ -7053,7 +7106,12 @@ export const server = http.createServer(async (req, res) => {
         savedConfig = JSON.parse(fsSync.readFileSync(BILLING_CONFIG_PATH, 'utf8'))
       }
     } catch { /* use reviewed defaults */ }
-    return mergeBillingConfigWithDefaults(BILLING_DEFAULTS, savedConfig)
+    return mergeBillingConfigWithDefaults(readBillingDefaults(), savedConfig)
+  }
+
+  const refreshBillingConfigForModels = async (modelIds) => {
+    await MODEL_PRICE_CATALOG_STORE.ensureModels(modelIds)
+    return readEffectiveBillingConfig()
   }
 
   const readObservationBillingConfig = readEffectiveBillingConfig
@@ -7159,7 +7217,7 @@ export const server = http.createServer(async (req, res) => {
     } catch (e) {
       console.error('[billing-config GET] error:', e.message)
       res.writeHead(500, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ error: e.message, ...BILLING_DEFAULTS }))
+      res.end(JSON.stringify({ error: e.message, ...readBillingDefaults() }))
     }
     return
   }
@@ -7194,7 +7252,7 @@ export const server = http.createServer(async (req, res) => {
   // GET /api/billing-config/defaults — 获取内置预设（用于"恢复默认"或新增模型时下拉选择）
   if (pathname === '/api/billing-config/defaults' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify(BILLING_DEFAULTS))
+    res.end(JSON.stringify(readBillingDefaults()))
     return
   }
 
@@ -7209,6 +7267,7 @@ export const server = http.createServer(async (req, res) => {
       const range = buildLocalUsageRange(url.searchParams)
       const result = await collectLocalAiUsage(range, billingConfig, {
         forceRefresh: url.searchParams.get('refresh') === '1',
+        refreshBillingConfig: refreshBillingConfigForModels,
       })
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify(result))
@@ -7346,7 +7405,9 @@ export const server = http.createServer(async (req, res) => {
         cappedDays: LOCAL_AI_USAGE_MAX_DAYS,
         granularity: 'day',
         key: `all-capped-${LOCAL_AI_USAGE_MAX_DAYS}&granularity=day`,
-      }, billingConfig)
+      }, billingConfig, {
+        refreshBillingConfig: refreshBillingConfigForModels,
+      })
       for (const day of localAllUsage.timeline || []) {
         const dayCost = Number(day.cost) || 0
         if (day.date === todayKey) todayCost += dayCost
@@ -8961,7 +9022,24 @@ if (IS_DIRECT_EXECUTION) {
 
     // 启动后自动备份当前 dist（异步，不阻塞服务）
     backupDistOnStartup()
+
+    // 启动后在后台同步一次官方模型价格。失败时继续使用上次已验证目录，
+    // 不影响服务启动，也不会用不完整结果覆盖现有缓存。
+    void MODEL_PRICE_CATALOG_STORE.sync()
+      .then(({ updated }) => {
+        if (updated) clearLocalAiUsageCache()
+      })
+      .catch(() => console.warn('[model-catalog] refresh_failed'))
   })
+
+  const modelCatalogRefreshTimer = setInterval(() => {
+    void MODEL_PRICE_CATALOG_STORE.sync()
+      .then(({ updated }) => {
+        if (updated) clearLocalAiUsageCache()
+      })
+      .catch(() => console.warn('[model-catalog] refresh_failed'))
+  }, MODEL_CATALOG_REFRESH_MS)
+  modelCatalogRefreshTimer.unref?.()
 }
 
 // 优雅关闭
