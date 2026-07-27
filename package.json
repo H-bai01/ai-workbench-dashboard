@@ -16,6 +16,7 @@
   },
   "files": [
     ".env.example",
+    "README_EN.md",
     "docs/",
     "eslint.config.js",
     "index.html",
