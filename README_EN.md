@@ -14,7 +14,7 @@
 
 AI Workbench Dashboard is a local monitoring and management console for AI tools. It brings OpenClaw, Codex, Claude Code, and future tools into one interface for viewing runtime status, token usage and API-equivalent cost, projects and sessions, tool calls, workspaces, scheduled tasks, and version updates.
 
-Current local release: `v2.12.5`.
+Current local release: `v2.12.6`.
 
 [![npm version](https://img.shields.io/npm/v/ai-workbench-dashboard.svg)](https://www.npmjs.com/package/ai-workbench-dashboard)
 [![GitHub release](https://img.shields.io/github/v/release/H-bai01/ai-workbench-dashboard)](https://github.com/H-bai01/ai-workbench-dashboard/releases)
