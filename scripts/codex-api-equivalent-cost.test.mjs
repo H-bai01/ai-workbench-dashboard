@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { Worker } from 'node:worker_threads'
 import {
   GPT56_BILLING_MODELS,
   mergeBillingConfigWithDefaults,
@@ -17,6 +18,10 @@ let calculateUsageCostBreakdownWithBilling
 let observationPriceConfigured
 let resolveBillingConfig
 let buildLocalAiUsageResult
+let collectLocalAiUsage
+let setLocalAiUsageWorkerFactoryForTests
+let localAiUsageWorkerStateForTests
+let clearLocalAiUsageCacheForTests
 let serviceServer
 const isolatedKeys = [
   'HOME',
@@ -24,6 +29,7 @@ const isolatedKeys = [
   'OPENCLAW_SKIP_DOTENV',
   'OPENCLAW_LOCAL_AI_USAGE_FRESH_MS',
   'OPENCLAW_LOCAL_AI_USAGE_RETENTION_MS',
+  'OPENCLAW_DASHBOARD_DATA_ROOT',
 ]
 const originalEnvironment = new Map(isolatedKeys.map((key) => [key, process.env[key]]))
 
@@ -36,6 +42,7 @@ before(async () => {
   process.env.OPENCLAW_SKIP_DOTENV = '1'
   process.env.OPENCLAW_LOCAL_AI_USAGE_FRESH_MS = '25'
   process.env.OPENCLAW_LOCAL_AI_USAGE_RETENTION_MS = '60000'
+  process.env.OPENCLAW_DASHBOARD_DATA_ROOT = path.join(tempRoot, 'dashboard-data')
   const serviceUrl = pathToFileURL(path.join(process.cwd(), 'scripts', 'unified-service.js')).href
   const service = await import(serviceUrl)
   calculateUsageCostWithBilling = service.calculateUsageCostWithBilling
@@ -43,6 +50,10 @@ before(async () => {
   observationPriceConfigured = service.observationPriceConfigured
   resolveBillingConfig = service.resolveBillingConfig
   buildLocalAiUsageResult = service.buildLocalAiUsageResult
+  collectLocalAiUsage = service.collectLocalAiUsage
+  setLocalAiUsageWorkerFactoryForTests = service.setLocalAiUsageWorkerFactoryForTests
+  localAiUsageWorkerStateForTests = service.localAiUsageWorkerStateForTests
+  clearLocalAiUsageCacheForTests = service.clearLocalAiUsageCacheForTests
   serviceServer = service.server
 })
 
@@ -320,7 +331,7 @@ test('存在无法识别的模型时接口直接报错', async () => {
       String(now.getMonth() + 1).padStart(2, '0'),
       String(now.getDate()).padStart(2, '0'),
     ].join('-')
-    const response = await fetch(`http://127.0.0.1:${address.port}/api/local-ai-usage?start=${today}&end=${today}`, {
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/local-ai-usage?start=${today}&end=${today}&refresh=1`, {
       headers: { 'X-Dashboard-Token': localToken },
     })
     assert.equal(response.status, 422)
@@ -347,6 +358,7 @@ test('运行中同步到新模型后，同一次扫描会用新目录重新计�
       all: false,
       granularity: 'day',
     }, configWithGpt56(), {
+      forceRefresh: true,
       async refreshBillingConfig(modelIds) {
         refreshCount += 1
         assert.ok(modelIds.includes('runtime-model-2027'))
@@ -376,24 +388,154 @@ test('运行中同步到新模型后，同一次扫描会用新目录重新计�
   }
 })
 
-test('本地用量扫描按范围缓存、复用进行中任务并并行读取两类客户端', () => {
+test('价格变化只重算账本快照，不重新读取原始记录', async () => {
+  const timeMs = Date.now() - 1_000
+  const ledgerSnapshot = {
+    refreshedAt: timeMs,
+    faults: [],
+    providers: [{
+      providerId: 'codex',
+      name: 'Codex',
+      itemLabel: '项目',
+      files: {
+        '/synthetic/session.jsonl': {
+          sessionId: 'pricing-only',
+          title: '账本标题优先',
+          path: '/synthetic/session.jsonl',
+          project: '/synthetic/project',
+          firstActivityMs: timeMs,
+          mtimeMs: timeMs,
+          observations: [{
+            timeMs,
+            model: 'pricing-only-model',
+            usage: {
+              tokens: 1_500_000,
+              input: 1_000_000,
+              output: 500_000,
+              cacheRead: 0,
+              cacheWrite: 0,
+            },
+          }],
+        },
+      },
+    }],
+  }
+  const config = price => mergeBillingConfigWithDefaults(configWithGpt56(), {
+    models: {
+      'pricing-only-model': {
+        mode: 'per_token',
+        inputPriceCNYPerMillion: price,
+        outputPriceCNYPerMillion: price * 2,
+      },
+    },
+  })
+  const range = {
+    startMs: timeMs - 1_000,
+    endMs: timeMs + 1_000,
+    granularity: 'day',
+  }
+  const first = await buildLocalAiUsageResult(range, config(10), { ledgerSnapshot })
+  const second = await buildLocalAiUsageResult(range, config(20), { ledgerSnapshot })
+  assert.equal(first.totals.tokens, second.totals.tokens)
+  assert.equal(first.apps.find(app => app.id === 'codex').items[0].name, '账本标题优先')
+  assert.equal(first.totals.cost, 20)
+  assert.equal(second.totals.cost, 40)
+})
+
+test('本地用量通过统一增量账本复用扫描并隔离两类客户端', () => {
   const source = fs.readFileSync(path.join(import.meta.dirname, 'unified-service.js'), 'utf8')
   assert.match(source, /const localAiUsageCache = new Map\(\)/)
   assert.match(source, /const localAiUsageInFlight = new Map\(\)/)
-  assert.match(source, /let localAiUsageRefreshTail = Promise\.resolve\(\)/)
   assert.match(source, /let localAiUsageCacheGeneration = 0/)
   assert.match(source, /if \(localAiUsageInFlight\.has\(cacheKey\)\) return localAiUsageInFlight\.get\(cacheKey\)/)
-  assert.match(source, /localAiUsageRefreshTail\s*\.catch\(\(\) => undefined\)\s*\.then/)
   assert.match(source, /state: 'stale',[\s\S]*refreshing: !refreshFailed/)
-  assert.match(source, /const apps = await Promise\.all\(\[\s*collectCodexUsage\(range, billingConfig\),\s*collectClaudeCodeUsage\(range, billingConfig\),/)
+  assert.match(source, /refreshLocalAiUsageLedgerInWorker\(\{/)
+  assert.match(source, /LOCAL_AI_USAGE_LEDGER_WORKER_URL/)
+  const workerSource = fs.readFileSync(path.join(import.meta.dirname, 'local-ai-usage-ledger-worker.mjs'), 'utf8')
+  assert.match(workerSource, /createLocalAiUsageLedgerStore\(\{/)
+  assert.match(source, /collectProviderUsageFromLedger\(provider, range, billingConfig\)/)
+  assert.match(source, /ledgerSnapshot/)
   assert.match(source, /clearLocalAiUsageCache\(\)/)
   assert.match(source, /if \(generation === localAiUsageCacheGeneration\)/)
-  assert.doesNotMatch(source, /cachedLocalAiUsageResult/)
+  assert.match(source, /scheduleLocalAiUsageRefresh\([\s\S]*\{ deferStart: true \},[\s\S]*\)/)
+  assert.doesNotMatch(source, /collectJsonlFiles|forEachJsonlObject/)
   const summaryHandler = source.slice(
     source.indexOf("if (pathname === '/api/cost-summary'"),
     source.indexOf("if (pathname === '/api/cost-timeline'"),
   )
   assert.equal((summaryHandler.match(/await collectLocalAiUsage\(/g) || []).length, 1)
+})
+
+test('过期缓存先返回并把同步重刷新延后到下一事件循环，同范围请求保持单飞', async () => {
+  const range = {
+    startMs: Date.now() - 1_000,
+    endMs: Date.now() + 1_000,
+    all: false,
+    granularity: 'day',
+    key: `deferred-heavy-refresh-${Date.now()}`,
+  }
+  const result = (tokens) => ({
+    range: {
+      startMs: range.startMs,
+      endMs: range.endMs,
+      all: false,
+      granularity: 'day',
+    },
+    apps: [],
+    timeline: [],
+    totals: { tokens },
+    updatedAt: new Date().toISOString(),
+    ledger: { refreshedAt: Date.now(), faults: [] },
+  })
+
+  await collectLocalAiUsage(
+    range,
+    configWithGpt56(),
+    {},
+    { refreshBuilder: async () => result(1) },
+  )
+  await new Promise(resolve => setTimeout(resolve, 35))
+
+  let refreshStarts = 0
+  const heavyRefresh = async () => {
+    refreshStarts += 1
+    const until = Date.now() + 200
+    while (Date.now() < until) {
+      // 模拟账本发现和校验在首次异步让出前发生的同步重负载。
+    }
+    return result(2)
+  }
+
+  const startedAt = Date.now()
+  const [first, second] = await Promise.all([
+    collectLocalAiUsage(range, configWithGpt56(), {}, { refreshBuilder: heavyRefresh }),
+    collectLocalAiUsage(range, configWithGpt56(), {}, { refreshBuilder: heavyRefresh }),
+  ])
+  const returnedInMs = Date.now() - startedAt
+
+  assert.equal(first.cache.state, 'stale')
+  assert.equal(second.cache.state, 'stale')
+  assert.equal(first.cache.refreshing, true)
+  assert.equal(second.cache.refreshing, true)
+  assert.equal(first.totals.tokens, 1)
+  assert.equal(second.totals.tokens, 1)
+  assert.equal(refreshStarts, 0)
+  assert.ok(returnedInMs < 100, `过期缓存返回耗时 ${returnedInMs}ms，应早于同步重刷新`)
+
+  const deadline = Date.now() + 2_000
+  let refreshed
+  while (Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 20))
+    refreshed = await collectLocalAiUsage(
+      range,
+      configWithGpt56(),
+      {},
+      { refreshBuilder: heavyRefresh },
+    )
+    if (refreshed.totals.tokens === 2) break
+  }
+  assert.equal(refreshStarts, 1)
+  assert.equal(refreshed?.totals.tokens, 2)
 })
 
 test('过期范围立即返回上一份完整结果并在后台替换缓存', async () => {
@@ -440,4 +582,174 @@ test('过期范围立即返回上一份完整结果并在后台替换缓存', as
     if (tokens === 6_000_500) break
   }
   assert.equal(refreshed.apps.find((app) => app.id === 'codex').byModel['gpt-5.6-sol'].tokens, 6_000_500)
+})
+
+function fixtureLedgerSnapshot(tokens = 0) {
+  const timeMs = Date.now()
+  const files = tokens > 0
+    ? {
+        '/synthetic/codex.jsonl': {
+          path: '/synthetic/codex.jsonl',
+          sessionId: `synthetic-${tokens}`,
+          title: '合成用量',
+          project: '/synthetic',
+          firstActivityMs: timeMs,
+          mtimeMs: timeMs,
+          observations: [{
+            timeMs,
+            model: 'gpt-5.6-sol',
+            usage: { tokens, input: tokens, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
+          }],
+        },
+      }
+    : {}
+  return {
+    providers: [
+      { providerId: 'codex', name: 'Codex', itemLabel: '项目', files },
+      { providerId: 'claude-code', name: 'Claude Code', itemLabel: '项目', files: {} },
+    ],
+    faults: [],
+    refreshedAt: timeMs,
+    attemptedAt: timeMs,
+  }
+}
+
+function fixtureWorkerFactory({ mode = 'success', delayMs = 0, snapshot, onCreate } = {}) {
+  return () => {
+    onCreate?.()
+    return new Worker(`
+      const { parentPort, workerData } = require('node:worker_threads')
+      const until = Date.now() + workerData.delayMs
+      while (Date.now() < until) {}
+      if (workerData.mode === 'throw') {
+        throw new Error('/Users/private/ledger.jsonl synthetic-secret-body')
+      }
+      if (workerData.mode === 'exit') process.exit(9)
+      parentPort.postMessage({ ok: true, snapshot: workerData.snapshot })
+    `, {
+      eval: true,
+      workerData: { mode, delayMs, snapshot: snapshot || fixtureLedgerSnapshot() },
+    })
+  }
+}
+
+async function waitForWorkerState(predicate, timeoutMs = 2_000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const state = localAiUsageWorkerStateForTests()
+    if (predicate(state)) return state
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+  assert.fail('本地用量工作线程未在期限内进入目标状态')
+}
+
+test('后台账本刷新在工作线程运行时，健康检查和过期用量 HTTP 保持 100ms 级响应', async () => {
+  const address = serviceServer.address()
+  const localToken = fs.readFileSync(path.join(tempHome, '.openclaw', 'dashboard-local-token'), 'utf8').trim()
+  let workerStarts = 0
+  setLocalAiUsageWorkerFactoryForTests(fixtureWorkerFactory({
+    delayMs: 400,
+    snapshot: fixtureLedgerSnapshot(7_000_000),
+    onCreate: () => { workerStarts += 1 },
+  }))
+  await new Promise(resolve => setTimeout(resolve, 35))
+  try {
+    const usageUrl = `http://127.0.0.1:${address.port}/api/local-ai-usage?days=1`
+    const headers = { 'X-Dashboard-Token': localToken }
+    const firstStartedAt = Date.now()
+    const first = await fetch(usageUrl, { headers })
+    const firstElapsed = Date.now() - firstStartedAt
+    assert.equal(first.status, 200)
+    assert.equal((await first.json()).cache.state, 'stale')
+    assert.ok(firstElapsed < 150, `过期用量响应耗时 ${firstElapsed}ms`)
+
+    await waitForWorkerState(state => state.activeWorkers === 1 && state.refreshing)
+    const probeStartedAt = Date.now()
+    const [health, second] = await Promise.all([
+      fetch(`http://127.0.0.1:${address.port}/api/health`),
+      fetch(usageUrl, { headers }),
+    ])
+    const probeElapsed = Date.now() - probeStartedAt
+    assert.equal(health.status, 200)
+    assert.equal(second.status, 200)
+    assert.equal((await second.json()).cache.state, 'stale')
+    assert.ok(probeElapsed < 150, `工作线程运行期间 HTTP 响应耗时 ${probeElapsed}ms`)
+    assert.equal(workerStarts, 1)
+    await waitForWorkerState(state => state.activeWorkers === 0 && !state.refreshing)
+  } finally {
+    setLocalAiUsageWorkerFactoryForTests(null)
+  }
+})
+
+test('工作线程抛错不泄漏路径或正文，并进入现有刷新失败冷却', async () => {
+  const address = serviceServer.address()
+  const localToken = fs.readFileSync(path.join(tempHome, '.openclaw', 'dashboard-local-token'), 'utf8').trim()
+  let workerStarts = 0
+  setLocalAiUsageWorkerFactoryForTests(fixtureWorkerFactory({
+    mode: 'throw',
+    delayMs: 50,
+    onCreate: () => { workerStarts += 1 },
+  }))
+  await new Promise(resolve => setTimeout(resolve, 35))
+  try {
+    const usageUrl = `http://127.0.0.1:${address.port}/api/local-ai-usage?days=1`
+    const headers = { 'X-Dashboard-Token': localToken }
+    const stale = await fetch(usageUrl, { headers })
+    assert.equal(stale.status, 200)
+    await waitForWorkerState(state => state.activeWorkers === 0 && !state.refreshing)
+
+    const cooled = await fetch(usageUrl, { headers })
+    assert.equal(cooled.status, 200)
+    const bodyText = await cooled.text()
+    const payload = JSON.parse(bodyText)
+    assert.equal(payload.cache.refreshFailed, true)
+    assert.equal(payload.cache.failureId, 'local-ai-ledger:worker')
+    assert.doesNotMatch(bodyText, /Users\/private|synthetic-secret-body|ledger\.jsonl/)
+    assert.equal(workerStarts, 1)
+  } finally {
+    setLocalAiUsageWorkerFactoryForTests(null)
+  }
+})
+
+test('清空范围缓存后旧工作线程不得回填，完成后无工作线程残留', async () => {
+  const range = {
+    startMs: Date.now() - 1_000,
+    endMs: Date.now() + 1_000,
+    all: false,
+    granularity: 'day',
+    key: `worker-generation-${Date.now()}`,
+  }
+  let workerStarts = 0
+  const countStart = () => { workerStarts += 1 }
+  setLocalAiUsageWorkerFactoryForTests(fixtureWorkerFactory({
+    snapshot: fixtureLedgerSnapshot(1_000),
+    onCreate: countStart,
+  }))
+  try {
+    const initial = await collectLocalAiUsage(range, configWithGpt56(), { forceRefresh: true })
+    assert.equal(initial.totals.tokens, 1_000)
+    await new Promise(resolve => setTimeout(resolve, 35))
+
+    setLocalAiUsageWorkerFactoryForTests(fixtureWorkerFactory({
+      delayMs: 250,
+      snapshot: fixtureLedgerSnapshot(2_000),
+      onCreate: countStart,
+    }))
+    const stale = await collectLocalAiUsage(range, configWithGpt56(), { forceRefresh: true })
+    assert.equal(stale.cache.state, 'stale')
+    await waitForWorkerState(state => state.activeWorkers === 1 && state.refreshing)
+
+    clearLocalAiUsageCacheForTests()
+    setLocalAiUsageWorkerFactoryForTests(fixtureWorkerFactory({
+      snapshot: fixtureLedgerSnapshot(3_000),
+      onCreate: countStart,
+    }))
+    const current = await collectLocalAiUsage(range, configWithGpt56(), { forceRefresh: true })
+    assert.equal(current.totals.tokens, 3_000)
+    assert.equal(workerStarts, 3)
+    await waitForWorkerState(state => state.activeWorkers === 0 && !state.refreshing)
+    assert.deepEqual(localAiUsageWorkerStateForTests(), { activeWorkers: 0, refreshing: false })
+  } finally {
+    setLocalAiUsageWorkerFactoryForTests(null)
+  }
 })

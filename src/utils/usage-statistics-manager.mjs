@@ -83,7 +83,9 @@ export function createUsageStatisticsManager({
 
   function reportFailure(failure, request) {
     if (failure.kind === 'service_unavailable' || failure.kind === 'aborted') return
-    const scopeKey = request.scopeKey || 'usage'
+    const scopeKey = failure.kind === 'background_refresh_error'
+      ? `usage:ledger:${failure.failureId || 'background'}`
+      : request.scopeKey || 'usage'
     const fingerprint = `${failure.kind}:${failure.message}`
     if (activeFailures.get(scopeKey) === fingerprint) return
     activeFailures.set(scopeKey, fingerprint)
@@ -126,6 +128,7 @@ export function createUsageStatisticsManager({
       const backgroundFailure = {
         kind: 'background_refresh_error',
         message: '后台刷新没有生成新的完整统计结果。',
+        failureId: safeMessage(localUsageData?.cache?.failureId, 'background'),
       }
       reportFailure(backgroundFailure, request)
       return {
@@ -134,6 +137,10 @@ export function createUsageStatisticsManager({
         localUsageData,
         refreshFailed: true,
       }
+    }
+
+    for (const key of activeFailures.keys()) {
+      if (key.startsWith('usage:ledger:')) activeFailures.delete(key)
     }
 
     return {

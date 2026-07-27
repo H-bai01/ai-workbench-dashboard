@@ -634,6 +634,8 @@ test('上传、头像与 dist 备份接口继续使用受控路径边界', async
   }))
   assert.notEqual(linkedUploadRoot.status, 200)
   assert.equal(linkedUploadRoot.body.includes(gatewaySecret), false)
+  fs.rmSync(dashboardDataRoot, { force: true })
+  fs.mkdirSync(dashboardDataRoot, { mode: 0o700 })
 
   const avatarSecret = path.join(outside, 'avatar-secret.png')
   const avatarLink = path.join(workspace, 'avatar-link.png')

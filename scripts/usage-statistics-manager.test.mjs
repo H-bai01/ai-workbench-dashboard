@@ -121,3 +121,44 @@ test('模型识别错误与后台刷新错误仍进入统一通知入口', async
   })
   assert.equal(notifications.at(-1).errorCode, 'usage_background_refresh_failed')
 })
+
+test('同一账本根因跨时间范围只通知一次，恢复后允许再次通知', async () => {
+  const notifications = []
+  const manager = createUsageStatisticsManager({
+    notify: notification => notifications.push(notification),
+  })
+  const failedResponse = async url => (
+    String(url).endsWith('/local')
+      ? response({
+          ok: true,
+          apps: [],
+          timeline: [],
+          cache: {
+            refreshing: false,
+            refreshFailed: true,
+            failureId: 'stable-ledger-fault',
+          },
+        })
+      : response({ ok: true, timeline: [] })
+  )
+
+  await withFetch(failedResponse, async () => {
+    await manager.load({ ...request, scopeKey: 'usage:today', rangeLabel: '今天' })
+    await manager.load({ ...request, scopeKey: 'usage:7d', rangeLabel: '7 天' })
+    await manager.load({ ...request, scopeKey: 'usage:30d', rangeLabel: '30 天' })
+  })
+  assert.equal(notifications.length, 1)
+
+  await withFetch(async url => (
+    String(url).endsWith('/local')
+      ? response({ ok: true, apps: [], timeline: [], cache: { refreshFailed: false } })
+      : response({ ok: true, timeline: [] })
+  ), async () => {
+    await manager.load(request)
+  })
+
+  await withFetch(failedResponse, async () => {
+    await manager.load({ ...request, scopeKey: 'usage:7d', rangeLabel: '7 天' })
+  })
+  assert.equal(notifications.length, 2)
+})

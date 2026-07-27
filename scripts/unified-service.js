@@ -11,8 +11,8 @@ import fsSync from 'fs'
 import crypto from 'node:crypto'
 import path from 'path'
 import os from 'os'
-import readline from 'readline'
 import { spawn, execFile, execFileSync } from 'child_process'
+import { Worker } from 'node:worker_threads'
 import iconv from 'iconv-lite'
 import { fileURLToPath } from 'url'
 import dotenv from 'dotenv'
@@ -2931,8 +2931,198 @@ const LOCAL_AI_USAGE_CACHE_MAX_ENTRIES = 8
 const localAiUsageCache = new Map()
 const localAiUsageInFlight = new Map()
 const localAiUsageRefreshFailures = new Map()
-let localAiUsageRefreshTail = Promise.resolve()
 let localAiUsageCacheGeneration = 0
+const LOCAL_AI_USAGE_LEDGER_WORKER_URL = new URL('./local-ai-usage-ledger-worker.mjs', import.meta.url)
+const LOCAL_AI_USAGE_LEDGER_WORKER_TIMEOUT_MS = 120_000
+const defaultLocalAiUsageWorkerFactory = (url, options) => new Worker(url, options)
+let localAiUsageWorkerFactory = defaultLocalAiUsageWorkerFactory
+let localAiUsageLedgerSnapshot = null
+let localAiUsageLedgerSnapshotAt = 0
+let localAiUsageLedgerRefreshInFlight = null
+let localAiUsageActiveWorkers = 0
+
+function localAiUsageLedgerWorkerData(force) {
+  return {
+    force: Boolean(force),
+    ledgerDir: path.join(DASHBOARD_DATA_ROOT, 'local-ai-usage-ledger'),
+    retentionMs: LOCAL_AI_USAGE_MAX_DAYS * 86400_000,
+    sources: [
+      {
+        id: 'codex',
+        boundaryRoot: HOME_DIR,
+        roots: [
+          path.join(CODEX_HOME, 'sessions'),
+          path.join(CODEX_HOME, 'archived_sessions'),
+        ],
+        maxDepth: 6,
+      },
+      {
+        id: 'claude-code',
+        boundaryRoot: HOME_DIR,
+        roots: [path.join(CLAUDE_HOME, 'projects')],
+        maxDepth: 5,
+      },
+    ],
+  }
+}
+
+function safeLocalAiUsageWorkerFault(category = 'worker') {
+  const safeCategory = ['worker', 'protocol', 'exit'].includes(category) ? category : 'worker'
+  return {
+    id: `local-ai-ledger:${safeCategory}`,
+    source: 'local-ai-ledger',
+    category: safeCategory,
+  }
+}
+
+function localAiUsageWorkerError(category = 'worker') {
+  const error = new Error('local_usage_ledger_worker_failed')
+  error.code = 'LOCAL_AI_LEDGER_WORKER_FAILED'
+  error.faults = [safeLocalAiUsageWorkerFault(category)]
+  return error
+}
+
+function normalizeLocalAiUsageWorkerFaults(faults) {
+  if (!Array.isArray(faults)) return []
+  return faults
+    .map((fault) => ({
+      id: typeof fault?.id === 'string' ? fault.id.slice(0, 160) : '',
+      source: typeof fault?.source === 'string' ? fault.source.slice(0, 80) : '',
+      category: typeof fault?.category === 'string' ? fault.category.slice(0, 80) : '',
+    }))
+    .filter(fault => fault.id && fault.source && fault.category)
+}
+
+function validateLocalAiUsageLedgerSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+    throw localAiUsageWorkerError('protocol')
+  }
+  if (!Array.isArray(snapshot.providers) || !Array.isArray(snapshot.faults)) {
+    throw localAiUsageWorkerError('protocol')
+  }
+  const providerIds = snapshot.providers.map(provider => provider?.providerId)
+  if (
+    providerIds.length !== 2
+    || providerIds.some(id => !['codex', 'claude-code'].includes(id))
+    || new Set(providerIds).size !== providerIds.length
+  ) {
+    throw localAiUsageWorkerError('protocol')
+  }
+  return {
+    ...snapshot,
+    faults: normalizeLocalAiUsageWorkerFaults(snapshot.faults),
+  }
+}
+
+function runLocalAiUsageLedgerWorker({ force = false } = {}) {
+  return new Promise((resolve, reject) => {
+    let worker
+    let outcome = null
+    let timeout = null
+    try {
+      worker = localAiUsageWorkerFactory(LOCAL_AI_USAGE_LEDGER_WORKER_URL, {
+        workerData: localAiUsageLedgerWorkerData(force),
+      })
+    } catch {
+      reject(localAiUsageWorkerError('worker'))
+      return
+    }
+    localAiUsageActiveWorkers += 1
+    const finish = (callback, value) => {
+      if (timeout) clearTimeout(timeout)
+      callback(value)
+    }
+    worker.once('message', (message) => {
+      if (outcome) return
+      try {
+        if (message?.ok === true) {
+          outcome = { ok: true, snapshot: validateLocalAiUsageLedgerSnapshot(message.snapshot) }
+          return
+        }
+        const error = localAiUsageWorkerError('worker')
+        const faults = normalizeLocalAiUsageWorkerFaults(message?.faults)
+        if (faults.length > 0) error.faults = faults
+        outcome = { ok: false, error }
+      } catch {
+        outcome = { ok: false, error: localAiUsageWorkerError('protocol') }
+      }
+    })
+    worker.once('error', () => {
+      if (!outcome) outcome = { ok: false, error: localAiUsageWorkerError('worker') }
+    })
+    worker.once('exit', (code) => {
+      localAiUsageActiveWorkers = Math.max(0, localAiUsageActiveWorkers - 1)
+      if (outcome?.ok && code === 0) finish(resolve, outcome.snapshot)
+      else finish(reject, outcome?.error || localAiUsageWorkerError(code === 0 ? 'protocol' : 'exit'))
+    })
+    timeout = setTimeout(() => {
+      if (!outcome) outcome = { ok: false, error: localAiUsageWorkerError('worker') }
+      void worker.terminate().catch(() => undefined)
+    }, LOCAL_AI_USAGE_LEDGER_WORKER_TIMEOUT_MS)
+    timeout.unref?.()
+  })
+}
+
+async function refreshLocalAiUsageLedgerInWorker({ force = false, freshMs = 0 } = {}) {
+  const requestedGeneration = localAiUsageCacheGeneration
+  const now = Date.now()
+  if (
+    !force
+    && localAiUsageLedgerSnapshot
+    && localAiUsageLedgerSnapshotAt > 0
+    && now - localAiUsageLedgerSnapshotAt < freshMs
+  ) {
+    return localAiUsageLedgerSnapshot
+  }
+
+  const existing = localAiUsageLedgerRefreshInFlight
+  if (existing) {
+    if (existing.generation === requestedGeneration) return existing.promise
+    try {
+      await existing.promise
+    } catch {
+      // 旧世代任务只负责自己的请求，不得回填已清理的缓存。
+    }
+    return refreshLocalAiUsageLedgerInWorker({ force, freshMs })
+  }
+
+  const generation = requestedGeneration
+  const task = runLocalAiUsageLedgerWorker({ force }).then((snapshot) => {
+    if (generation === localAiUsageCacheGeneration) {
+      localAiUsageLedgerSnapshot = snapshot
+      localAiUsageLedgerSnapshotAt = Date.now()
+    }
+    return snapshot
+  })
+  const record = { generation, promise: task }
+  localAiUsageLedgerRefreshInFlight = record
+  task.then(() => {
+    if (localAiUsageLedgerRefreshInFlight === record) localAiUsageLedgerRefreshInFlight = null
+  }, () => {
+    if (localAiUsageLedgerRefreshInFlight === record) localAiUsageLedgerRefreshInFlight = null
+  })
+  return task
+}
+
+export function setLocalAiUsageWorkerFactoryForTests(factory) {
+  if (process.env.OPENCLAW_SKIP_DOTENV !== '1') throw new Error('test_worker_factory_unavailable')
+  localAiUsageWorkerFactory = typeof factory === 'function'
+    ? factory
+    : defaultLocalAiUsageWorkerFactory
+}
+
+export function localAiUsageWorkerStateForTests() {
+  if (process.env.OPENCLAW_SKIP_DOTENV !== '1') throw new Error('test_worker_state_unavailable')
+  return {
+    activeWorkers: localAiUsageActiveWorkers,
+    refreshing: Boolean(localAiUsageLedgerRefreshInFlight),
+  }
+}
+
+export function clearLocalAiUsageCacheForTests() {
+  if (process.env.OPENCLAW_SKIP_DOTENV !== '1') throw new Error('test_cache_clear_unavailable')
+  clearLocalAiUsageCache()
+}
 
 function clearLocalAiUsageCache() {
   localAiUsageCacheGeneration += 1
@@ -3040,109 +3230,6 @@ function isTimeInLocalRange(timeMs, range) {
   if (timeMs < range.startMs) return false
   if (range.endMs && timeMs > range.endMs) return false
   return true
-}
-
-function collectJsonlFiles(rootDir, maxDepth = 5, range = { startMs: 0 }) {
-  const out = []
-  const visit = (dir, depth) => {
-    if (depth > maxDepth) return
-    let entries = []
-    try { entries = fsSync.readdirSync(dir, { withFileTypes: true }) } catch { return }
-    for (const entry of entries) {
-      const full = path.join(dir, entry.name)
-      if (entry.isDirectory()) {
-        if (entry.name === 'node_modules' || entry.name === 'cache' || entry.name === 'file-history') continue
-        visit(full, depth + 1)
-        continue
-      }
-      if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue
-      let stat
-      try { stat = fsSync.statSync(full) } catch { continue }
-      if (!range.all && range.startMs && stat.mtimeMs < range.startMs) continue
-      out.push({ path: full, mtimeMs: stat.mtimeMs, size: stat.size })
-    }
-  }
-  visit(rootDir, 0)
-  return out
-}
-
-async function forEachJsonlObject(filePath, onObject) {
-  const stream = fsSync.createReadStream(filePath, { encoding: 'utf8' })
-  const rl = readline.createInterface({ input: stream, crlfDelay: Infinity })
-  try {
-    for await (const line of rl) {
-      const text = String(line || '').trim()
-      if (!text) continue
-      try {
-        await onObject(JSON.parse(text))
-      } catch {
-        // 忽略单行解析失败或不相关行
-      }
-    }
-  } finally {
-    rl.close()
-    stream.destroy()
-  }
-}
-
-function getLocalUsageTimestamp(entry) {
-  const raw = entry?.timestamp || entry?.message?.timestamp || entry?.created_at || entry?.createdAt
-  if (typeof raw === 'number') return raw < 1e12 ? raw * 1000 : raw
-  const parsed = Date.parse(String(raw || ''))
-  return Number.isFinite(parsed) ? parsed : 0
-}
-
-function extractLocalUsageTotals(raw = {}, options = {}) {
-  const usage = extractUsageTotals(raw)
-  if (options.cachedInputIncludedInInput && usage.cacheRead > 0 && usage.input >= usage.cacheRead) {
-    usage.input -= usage.cacheRead
-  }
-  return usage
-}
-
-function hasLocalUsageBreakdown(usage = {}) {
-  return [usage.input, usage.output, usage.cacheRead, usage.cacheWrite]
-    .some((value) => (Number(value) || 0) > 0)
-}
-
-function subtractLocalUsageTotals(current = {}, previous = {}) {
-  const delta = {
-    tokens: (Number(current.tokens) || 0) - (Number(previous.tokens) || 0),
-    cost: 0,
-    input: (Number(current.input) || 0) - (Number(previous.input) || 0),
-    output: (Number(current.output) || 0) - (Number(previous.output) || 0),
-    cacheRead: (Number(current.cacheRead) || 0) - (Number(previous.cacheRead) || 0),
-    cacheWrite: (Number(current.cacheWrite) || 0) - (Number(previous.cacheWrite) || 0),
-  }
-  return Object.values(delta).every((value) => Number.isFinite(value) && value >= 0) ? delta : null
-}
-
-function localConversationTitle(value, maxLength = 30) {
-  const collectText = (content) => {
-    if (typeof content === 'string') return content
-    if (Array.isArray(content)) {
-      return content
-        .filter((part) => typeof part === 'string' || part?.type === 'text')
-        .map((part) => typeof part === 'string' ? part : part.text)
-        .join(' ')
-    }
-    if (content && typeof content === 'object') {
-      if (typeof content.text === 'string') return content.text
-      return collectText(content.content)
-    }
-    return ''
-  }
-
-  const text = collectText(value).replace(/\s+/g, ' ').trim()
-  if (!text) return ''
-  const chars = Array.from(text)
-  return chars.length > maxLength ? `${chars.slice(0, maxLength).join('')}…` : text
-}
-
-function localConversationIdFromFile(filePath) {
-  const base = path.basename(filePath, path.extname(filePath))
-  const uuid = base.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)
-  return uuid?.[0] || base
 }
 
 function localConversationFallbackName(appName, timeMs) {
@@ -3264,168 +3351,47 @@ function finalizeLocalApp(app) {
   return app
 }
 
-async function collectCodexUsage(range, billingConfig) {
-  const app = createLocalApp('codex', 'Codex', '项目')
-  const roots = [
-    path.join(CODEX_HOME, 'sessions'),
-    path.join(CODEX_HOME, 'archived_sessions'),
-  ]
-  for (const root of roots) {
-    const files = collectJsonlFiles(root, 6, range)
-    for (const file of files) {
-      let conversationId = ''
-      let conversationTitle = ''
-      let currentCwd = ''
-      let currentModel = 'unknown'
-      let firstObservedModel = ''
-      let firstActivityMs = 0
-      let previousCumulativeUsage = null
-      const usageEvents = []
-      await forEachJsonlObject(file.path, async (entry) => {
-        const payload = entry?.payload || {}
-        const entryTimeMs = getLocalUsageTimestamp(entry)
-        if (entryTimeMs && (!firstActivityMs || entryTimeMs < firstActivityMs)) firstActivityMs = entryTimeMs
-        if (entry?.type === 'session_meta' && payload) {
-          conversationId = payload.id || conversationId
-          currentCwd = payload.cwd || currentCwd
-          currentModel = payload.model || currentModel
-          if (!firstObservedModel && payload.model) firstObservedModel = payload.model
-          return
-        }
-        if (entry?.type === 'turn_context' && payload) {
-          currentCwd = payload.cwd || currentCwd
-          currentModel = payload.model || payload.collaboration_mode?.settings?.model || currentModel
-          if (!firstObservedModel && currentModel !== 'unknown') firstObservedModel = currentModel
-          return
-        }
-        if (entry?.type === 'event_msg' && payload?.type === 'user_message' && !conversationTitle) {
-          conversationTitle = localConversationTitle(payload.message)
-          return
-        }
-        if (entry?.type !== 'event_msg' || payload?.type !== 'token_count') return
-        const timeMs = entryTimeMs
-        const info = payload.info || {}
-        const cumulativeUsage = info.total_token_usage
-          ? extractLocalUsageTotals(info.total_token_usage, { cachedInputIncludedInInput: true })
-          : null
-        const lastUsage = extractLocalUsageTotals(info.last_token_usage || info.total_token_usage || {}, {
-          cachedInputIncludedInInput: true,
-        })
-        let usage = lastUsage
-        if (!hasLocalUsageBreakdown(lastUsage) && previousCumulativeUsage && cumulativeUsage) {
-          const cumulativeDelta = subtractLocalUsageTotals(cumulativeUsage, previousCumulativeUsage)
-          if (cumulativeDelta && hasLocalUsageBreakdown(cumulativeDelta)) {
-            usage = cumulativeDelta
-          } else if (cumulativeDelta?.tokens === 0) {
-            // Codex 会周期性写入“仅 total_tokens、累计值未变化”的状态刷新。
-            // 这不是新的模型请求，不能按未知输入/输出比例重复计费。
-            usage = null
-          }
-        }
-        if (cumulativeUsage) previousCumulativeUsage = cumulativeUsage
-        if (!isTimeInLocalRange(timeMs, range)) return
-        if (!usage || !hasUsageValue(usage)) return
-        usageEvents.push({ usage, model: currentModel, timeMs })
-      })
-
-      if (!usageEvents.length) continue
-      // 新版 Codex 会在部分会话开头先写 token_count，随后才写首个
-      // turn_context。只回填这些前导事件；整份会话都没有明确模型时仍保持
-      // unknown，避免把真正未知的用量猜成某个模型。
-      if (firstObservedModel) {
-        for (const event of usageEvents) {
-          if (event.model !== 'unknown') break
-          event.model = firstObservedModel
-        }
-      }
-      const itemId = conversationId || localConversationIdFromFile(file.path)
-      const item = ensureLocalItem(
-        app,
-        itemId,
-        conversationTitle || localConversationFallbackName('Codex', firstActivityMs || file.mtimeMs),
-        {
-          type: '项目',
-          path: currentCwd,
-          project: currentCwd,
-          model: usageEvents[0]?.model || currentModel,
-        }
-      )
-      for (const event of usageEvents) {
-        addLocalUsage(app, item, event.model, event.usage, billingConfig, event.timeMs, range)
-      }
-    }
-  }
-  return finalizeLocalApp(app)
-}
-
-async function collectClaudeCodeUsage(range, billingConfig) {
-  const app = createLocalApp('claude-code', 'Claude Code', '项目')
-  const root = path.join(CLAUDE_HOME, 'projects')
-  const files = collectJsonlFiles(root, 5, range)
-  for (const file of files) {
-    const seenMessageIds = new Set()
-    let conversationId = ''
-    let customTitle = ''
-    let aiTitle = ''
-    let firstUserTitle = ''
-    let currentCwd = ''
-    let firstActivityMs = 0
-    const usageEvents = []
-    await forEachJsonlObject(file.path, async (entry) => {
-      conversationId = entry?.sessionId || conversationId
-      if (entry?.cwd) currentCwd = entry.cwd
-      const entryTimeMs = getLocalUsageTimestamp(entry)
-      if (entryTimeMs && (!firstActivityMs || entryTimeMs < firstActivityMs)) firstActivityMs = entryTimeMs
-      if (entry?.type === 'custom-title') {
-        customTitle = localConversationTitle(entry.customTitle || entry.title) || customTitle
-        return
-      }
-      if (entry?.type === 'ai-title') {
-        aiTitle = localConversationTitle(entry.aiTitle || entry.title) || aiTitle
-        return
-      }
-      if (entry?.type === 'user' && !firstUserTitle) {
-        firstUserTitle = localConversationTitle(entry?.message?.content)
-      }
-      const msg = entry?.message
-      const usageRaw = msg?.usage || entry?.usage
-      if (!usageRaw) return
-      const messageId = msg?.id || entry?.uuid || `${file.path}:${entry?.timestamp || ''}`
-      if (seenMessageIds.has(messageId)) return
-      seenMessageIds.add(messageId)
-      const timeMs = entryTimeMs
-      if (!isTimeInLocalRange(timeMs, range)) return
-      const usage = extractLocalUsageTotals(usageRaw)
-      if (!hasUsageValue(usage)) return
-      const model = msg?.model || entry?.model || usageRaw.model || 'unknown'
-      usageEvents.push({ usage, model, timeMs })
-    })
-
-    if (!usageEvents.length) continue
-    const itemId = conversationId || localConversationIdFromFile(file.path)
+function collectProviderUsageFromLedger(provider, range, billingConfig) {
+  const app = createLocalApp(provider.providerId, provider.name, provider.itemLabel)
+  for (const file of Object.values(provider.files || {})) {
+    const observations = (file.observations || []).filter(row => isTimeInLocalRange(row.timeMs, range))
+    if (observations.length === 0) continue
+    const itemId = String(file.sessionId || path.basename(file.path || 'conversation'))
     const item = ensureLocalItem(
       app,
       itemId,
-      customTitle || aiTitle || firstUserTitle || localConversationFallbackName('Claude Code', firstActivityMs || file.mtimeMs),
+      String(file.title || '').trim()
+        || localConversationFallbackName(provider.name, file.firstActivityMs || observations[0]?.timeMs || file.mtimeMs),
       {
-        type: '项目',
-        path: currentCwd,
-        project: currentCwd,
-        model: usageEvents[0]?.model || 'unknown',
-      }
+        type: provider.itemLabel,
+        path: file.project || '',
+        project: file.project || '',
+        model: observations[0]?.model || 'unknown',
+      },
     )
-    for (const event of usageEvents) {
-      addLocalUsage(app, item, event.model, event.usage, billingConfig, event.timeMs, range)
+    for (const observation of observations) {
+      addLocalUsage(
+        app,
+        item,
+        observation.model,
+        observation.usage,
+        billingConfig,
+        observation.timeMs,
+        range,
+      )
     }
   }
   return finalizeLocalApp(app)
 }
 
 export async function buildLocalAiUsageResult(range, billingConfig, options = {}) {
-    const apps = await Promise.all([
-      collectCodexUsage(range, billingConfig),
-      collectClaudeCodeUsage(range, billingConfig),
-    ])
+    const ledgerSnapshot = options.ledgerSnapshot || await refreshLocalAiUsageLedgerInWorker({
+      force: Boolean(options.forceRefresh),
+      freshMs: LOCAL_AI_USAGE_FRESH_MS,
+    })
+    const apps = ledgerSnapshot.providers.map(provider => (
+      collectProviderUsageFromLedger(provider, range, billingConfig)
+    ))
     const totals = createUsageTotals()
     const timelineByDay = createKeyedDictionary()
     if (range.granularity === 'hour') {
@@ -3467,6 +3433,16 @@ export async function buildLocalAiUsageResult(range, billingConfig, options = {}
       timeline,
       totals,
       updatedAt: new Date().toISOString(),
+      ledger: {
+        refreshedAt: ledgerSnapshot.refreshedAt,
+        faults: Array.isArray(ledgerSnapshot.faults)
+          ? ledgerSnapshot.faults.map(fault => ({
+              id: fault.id,
+              source: fault.source,
+              category: fault.category,
+            }))
+          : [],
+      },
     }
     const modelEntries = result.apps.flatMap((app) => Object.entries(app.byModel || {}))
     const unresolved = unresolvedUsageModels(modelEntries)
@@ -3481,6 +3457,7 @@ export async function buildLocalAiUsageResult(range, billingConfig, options = {}
           return buildLocalAiUsageResult(range, refreshedConfig, {
             ...options,
             catalogRetried: true,
+            ledgerSnapshot,
           })
         }
       } catch {
@@ -3491,43 +3468,71 @@ export async function buildLocalAiUsageResult(range, billingConfig, options = {}
     return result
 }
 
-function localAiUsageResponse(result, { state, refreshing = false, refreshFailed = false, ageMs = 0 }) {
+function localLedgerFailure(result) {
+  const faults = Array.isArray(result?.ledger?.faults) ? result.ledger.faults : []
+  return {
+    refreshFailed: faults.length > 0,
+    failureId: faults.map(fault => fault.id).filter(Boolean).sort().join(','),
+  }
+}
+
+function localAiUsageResponse(result, {
+  state,
+  refreshing = false,
+  refreshFailed = false,
+  failureId = '',
+  ageMs = 0,
+}) {
+  const ledgerFailure = localLedgerFailure(result)
   return {
     ...result,
     cache: {
       state,
       refreshing,
-      refreshFailed,
+      refreshFailed: refreshFailed || ledgerFailure.refreshFailed,
+      failureId: failureId || ledgerFailure.failureId || undefined,
       ageMs: Math.max(0, Math.round(ageMs)),
     },
   }
 }
 
-function scheduleLocalAiUsageRefresh(cacheKey, range, billingConfig, options = {}) {
+function scheduleLocalAiUsageRefresh(
+  cacheKey,
+  range,
+  billingConfig,
+  options = {},
+  scheduling = {},
+  refreshBuilder = buildLocalAiUsageResult,
+) {
   if (localAiUsageInFlight.has(cacheKey)) return localAiUsageInFlight.get(cacheKey)
 
   const generation = localAiUsageCacheGeneration
-  const task = localAiUsageRefreshTail
-    .catch(() => undefined)
-    .then(async () => {
-      try {
-        const result = await buildLocalAiUsageResult(range, billingConfig, options)
-        if (generation === localAiUsageCacheGeneration) {
-          localAiUsageCache.delete(cacheKey)
-          localAiUsageCache.set(cacheKey, { at: Date.now(), result })
-          localAiUsageRefreshFailures.delete(cacheKey)
-          pruneLocalAiUsageCache()
-        }
-        return result
-      } catch (error) {
-        if (generation === localAiUsageCacheGeneration) {
-          localAiUsageRefreshFailures.set(cacheKey, Date.now())
-        }
-        throw error
+  const runRefresh = async () => {
+    try {
+      const result = await refreshBuilder(range, billingConfig, options)
+      if (generation === localAiUsageCacheGeneration) {
+        localAiUsageCache.delete(cacheKey)
+        localAiUsageCache.set(cacheKey, { at: Date.now(), result })
+        localAiUsageRefreshFailures.delete(cacheKey)
+        pruneLocalAiUsageCache()
       }
-    })
-
-  localAiUsageRefreshTail = task.catch(() => undefined)
+      return result
+    } catch (error) {
+      if (generation === localAiUsageCacheGeneration) {
+        const failureId = Array.isArray(error?.faults)
+          ? error.faults.map(fault => fault?.id).filter(Boolean).sort().join(',')
+          : ''
+        localAiUsageRefreshFailures.set(cacheKey, { at: Date.now(), failureId })
+      }
+      throw error
+    }
+  }
+  let startRefresh
+  const task = new Promise((resolve, reject) => {
+    startRefresh = () => {
+      void runRefresh().then(resolve, reject)
+    }
+  })
 
   localAiUsageInFlight.set(cacheKey, task)
   task.then(() => {
@@ -3535,11 +3540,16 @@ function scheduleLocalAiUsageRefresh(cacheKey, range, billingConfig, options = {
   }, () => {
     if (localAiUsageInFlight.get(cacheKey) === task) localAiUsageInFlight.delete(cacheKey)
   })
+  if (scheduling.deferStart) setImmediate(startRefresh)
+  else startRefresh()
   return task
 }
 
-async function collectLocalAiUsage(range, billingConfig, options = {}) {
+export async function collectLocalAiUsage(range, billingConfig, options = {}, internals = {}) {
   const cacheKey = String(range.key || 'default')
+  const refreshBuilder = typeof internals.refreshBuilder === 'function'
+    ? internals.refreshBuilder
+    : buildLocalAiUsageResult
   const now = Date.now()
   pruneLocalAiUsageCache(now)
   const cached = localAiUsageCache.get(cacheKey)
@@ -3552,23 +3562,39 @@ async function collectLocalAiUsage(range, billingConfig, options = {}) {
       return localAiUsageResponse(cached.result, { state: 'fresh', ageMs })
     }
 
-    const failedAt = localAiUsageRefreshFailures.get(cacheKey) || 0
+    const failed = localAiUsageRefreshFailures.get(cacheKey)
+    const failedAt = Number(failed?.at) || 0
     const refreshFailed = !options.forceRefresh
       && failedAt > 0
       && (now - failedAt) < LOCAL_AI_USAGE_REFRESH_FAILURE_COOLDOWN_MS
     if (!refreshFailed) {
       if (options.forceRefresh) localAiUsageRefreshFailures.delete(cacheKey)
-      void scheduleLocalAiUsageRefresh(cacheKey, range, billingConfig, options).catch(() => undefined)
+      void scheduleLocalAiUsageRefresh(
+        cacheKey,
+        range,
+        billingConfig,
+        options,
+        { deferStart: true },
+        refreshBuilder,
+      ).catch(() => undefined)
     }
     return localAiUsageResponse(cached.result, {
       state: 'stale',
       refreshing: !refreshFailed,
       refreshFailed,
+      failureId: failed?.failureId || '',
       ageMs,
     })
   }
 
-  const result = await scheduleLocalAiUsageRefresh(cacheKey, range, billingConfig, options)
+  const result = await scheduleLocalAiUsageRefresh(
+    cacheKey,
+    range,
+    billingConfig,
+    options,
+    {},
+    refreshBuilder,
+  )
   return localAiUsageResponse(result, { state: 'fresh' })
 }
 
